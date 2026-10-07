@@ -1,0 +1,30 @@
+# Secrets and local environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+secrets/
+credentials/
+
+# Local runtime output
+node_modules/
+*.log
+coverage/
+.cache/
+.tmp/
+tmp/
+
+# Synced reference materials are maintained outside this repository
+sources/
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/

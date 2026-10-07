@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Візуальний прототип застосунку аналізу закупівель Євроізол">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d2038'/%3E%3Cpath d='M8 22 16 7l8 15h-4l-4-8-4 8z' fill='%23f4b942'/%3E%3C/svg%3E">
+  <title>Євроізол | Аналіз закупівель</title>
+  <style>
+    :root { --ink:#0b1f35; --blue:#1565c0; --sky:#eaf3ff; --line:#dbe5ef; --muted:#64748b; --gold:#f3b33d; --green:#1f8b63; --amber:#d97706; --red:#bd3d4c; --bg:#f4f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 Inter,Segoe UI,Arial,sans-serif; }
+    button { font:inherit; cursor:pointer; }
+    .topbar { height:68px; display:flex; align-items:center; justify-content:space-between; padding:0 30px; color:#fff; background:linear-gradient(100deg,#081a2f,#123c67); }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:750; letter-spacing:.2px; }
+    .mark { width:33px; height:33px; border-radius:9px; display:grid; place-items:center; background:var(--gold); color:#0b1f35; font-weight:900; }
+    .topmeta { display:flex; align-items:center; gap:20px; color:#cbd9e9; font-size:13px; }
+    .notice { display:flex; gap:8px; align-items:center; background:#173e66; padding:7px 10px; border-radius:8px; color:#fff; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#53d391; }
+    main { max-width:1440px; margin:0 auto; padding:27px 30px 46px; }
+    .heading { display:flex; justify-content:space-between; gap:20px; align-items:flex-end; margin-bottom:22px; }
+    h1 { margin:0; font-size:27px; letter-spacing:-.5px; }
+    .sub { color:var(--muted); margin:5px 0 0; }
+    .export { border:0; border-radius:9px; padding:11px 15px; font-weight:650; color:#102a43; background:var(--gold); box-shadow:0 4px 10px #d7961f33; }
+    .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:23px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:13px; padding:17px; min-height:108px; box-shadow:0 4px 14px #203b5a08; }
+    .label { color:var(--muted); font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.5px; }
+    .number { margin-top:8px; font-size:29px; line-height:1; font-weight:780; }
+    .hint { margin-top:8px; color:var(--muted); font-size:13px; }
+    .up { color:var(--green); font-weight:700; } .warn { color:var(--amber); font-weight:700; }
+    .tabs { display:flex; gap:8px; margin:4px 0 17px; }
+    .tab { border:1px solid var(--line); background:#fff; color:#466076; border-radius:9px; padding:10px 15px; font-weight:650; }
+    .tab.active { color:#fff; border-color:var(--blue); background:var(--blue); }
+    .workspace { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,.85fr); gap:17px; }
+    .panel { background:#fff; border:1px solid var(--line); border-radius:13px; overflow:hidden; box-shadow:0 4px 14px #203b5a08; }
+    .panel-head { padding:16px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .panel h2 { margin:0; font-size:16px; }
+    .filter { color:var(--blue); background:var(--sky); border:0; border-radius:7px; padding:7px 10px; font-size:13px; font-weight:650; }
+    .table-wrap { overflow:auto; }
+    table { width:100%; border-collapse:collapse; min-width:700px; }
+    th { padding:11px 14px; text-align:left; color:#6e7f91; background:#fbfcfe; border-bottom:1px solid var(--line); font-size:11px; letter-spacing:.45px; text-transform:uppercase; }
+    td { padding:13px 14px; border-bottom:1px solid #edf1f5; vertical-align:top; }
+    tbody tr { cursor:pointer; transition:.16s; } tbody tr:hover, tbody tr.selected { background:#f2f8ff; }
+    .title { font-weight:690; max-width:280px; } .small { color:var(--muted); font-size:12px; margin-top:2px; }
+    .chip { display:inline-flex; align-items:center; gap:5px; border-radius:99px; padding:4px 8px; font-size:12px; font-weight:700; white-space:nowrap; }
+    .chip.green { color:#166549; background:#e7f8ef; } .chip.amber { color:#9a5100; background:#fff3dc; } .chip.blue { color:#15569c; background:#e9f3ff; }
+    .dot-sm { width:6px; height:6px; border-radius:50%; background:currentColor; }
+    .detail { padding:19px; }
+    .detail-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .detail h3 { margin:0; font-size:18px; line-height:1.25; }
+    .source { color:var(--blue); font-size:13px; font-weight:700; margin:9px 0 17px; }
+    .alert { border-left:4px solid var(--amber); border-radius:7px; padding:10px 11px; background:#fff8e9; color:#77400a; font-size:13px; margin:15px 0; }
+    .data { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0; }
+    .data div { background:#f8fafc; border-radius:8px; padding:9px; } .data b { display:block; font-size:13px; margin-top:2px; }
+    .compare { margin-top:16px; border-top:1px solid var(--line); padding-top:15px; }
+    .compare h4 { font-size:13px; margin:0 0 9px; }
+    .compare-row { display:grid; grid-template-columns:1.1fr 1fr; gap:8px; padding:8px 0; border-bottom:1px dashed #dfe7ef; font-size:13px; }
+    .compare-row span:last-child { font-weight:680; color:#154d80; }
+    .action { margin-top:17px; width:100%; color:#fff; background:var(--blue); border:0; border-radius:8px; padding:10px; font-weight:700; }
+    .lower { display:grid; grid-template-columns:1fr .92fr; gap:17px; margin-top:17px; }
+    .run { padding:15px 18px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+    .run:last-child { border:0; } .time { font-weight:760; font-size:18px; } .run p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+    .email { padding:17px 18px; } .mail-meta { color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); padding-bottom:11px; margin-bottom:12px; }
+    .email strong { display:block; margin:7px 0 5px; } .email p { margin:0; font-size:13px; color:#40576d; }
+    #toast { position:fixed; right:22px; bottom:22px; background:#0b1f35; color:#fff; padding:12px 15px; border-radius:9px; box-shadow:0 8px 20px #0b1f3555; opacity:0; transform:translateY(15px); transition:.25s; }
+    #toast.show { opacity:1; transform:translateY(0); }
+    @media(max-width:1000px){ .cards{grid-template-columns:repeat(2,1fr)} .workspace,.lower{grid-template-columns:1fr} }
+    @media(max-width:620px){ .topmeta{display:none} main{padding:20px 14px} .topbar{padding:0 14px}.heading{align-items:flex-start;flex-direction:column}.cards{grid-template-columns:1fr}.data{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">Є</span> Євроізол <span style="color:#8eacc8;font-weight:500">/ Аналіз закупівель</span></div>
+    <div class="topmeta"><span>Оновлено: сьогодні, 09:00</span><span class="notice"><i class="dot"></i> Моніторинг активний у макеті</span></div>
+  </header>
+  <main>
+    <section class="heading">
+      <div><h1>Можливості продажу</h1><p class="sub">Будівельні закупівлі, матеріали та відповідники Євроізол</p></div>
+      <button class="export" onclick="toast('Макет: Excel-експорт буде сформовано за вибраним блоком')">Експорт до Excel</button>
+    </section>
+    <section class="cards">
+      <article class="card"><div class="label">Нові можливості</div><div class="number">18</div><div class="hint"><span class="up">+6</span> після запуску о 09:00</div></article>
+      <article class="card"><div class="label">Потрібно перевірити</div><div class="number">7</div><div class="hint"><span class="warn">3</span> мають строк цього тижня</div></article>
+      <article class="card"><div class="label">Активні закупівлі</div><div class="number">64</div><div class="hint">Відстежуються до переможця</div></article>
+      <article class="card"><div class="label">Переможців виявлено</div><div class="number">11</div><div class="hint">Контакти доступні у 8 випадках</div></article>
+    </section>
+    <div class="tabs" role="tablist"><button class="tab active" data-type="budget">Бюджетні закупівлі <span id="budgetCount">42</span></button><button class="tab" data-type="commercial">Комерційні закупівлі <span id="commercialCount">22</span></button></div>
+    <section class="workspace">
+      <article class="panel"><div class="panel-head"><h2 id="tableTitle">Бюджетні закупівлі</h2><button class="filter" onclick="toast('Макет: тут будуть фільтри за регіоном, матеріалом і строком')">Фільтри</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Закупівля / замовник</th><th>Матеріал</th><th>Строк</th><th>Відповідність</th><th>Статус</th></tr></thead><tbody id="tenders"></tbody></table></div>
+      </article>
+      <aside class="panel"><div class="detail" id="detail"></div></aside>
+    </section>
+    <section class="lower">
+      <article class="panel"><div class="panel-head"><h2>Розклад моніторингу</h2><span class="small">Europe/Kyiv</span></div>
+        <div class="run"><div><span class="time">09:00</span><p>Основний цикл: усі підключені джерела</p></div><span class="chip green"><i class="dot-sm"></i> Заплановано</span></div>
+        <div class="run"><div><span class="time">18:00</span><p>Додатковий цикл: нові й змінені закупівлі</p></div><span class="chip blue"><i class="dot-sm"></i> Заплановано</span></div>
+      </article>
+      <article class="panel"><div class="panel-head"><h2>Приклад email-сповіщення</h2><span class="chip amber">Потрібно перевірити</span></div>
+        <div class="email"><div class="mail-meta">Кому: менеджер з продажу · Тема: Нова можливість — мембрана</div><strong>Реконструкція покрівлі ліцею</strong><p>Замовник: Управління освіти. Строк: 14 жовтня. Виявлено ПВХ-мембрану, 2 400 м². Рекомендовано: Євроізол ПВХ. Потрібно перевірити товщину в технічній специфікації.</p></div>
+      </article>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script>
+    const data={budget:[
+      {title:'Реконструкція покрівлі ліцею',buyer:'Управління освіти',material:'ПВХ-мембрана',amount:'2 400 м²',deadline:'14 жовтня',match:'Потрібно перевірити',kind:'amber',status:'Активна',source:'Prozorro',reason:'Не знайдено товщину матеріалу в доступному фрагменті.',product:'Євроізол ПВХ-мембрана',chars:[['Матеріал','ПВХ-мембрана'],['Товщина','Не вказано'],['Обсяг','2 400 м²'],['Кандидат','Євроізол ПВХ']]},
+      {title:'Капітальний ремонт укриття',buyer:'Міська лікарня',material:'Геотекстиль',amount:'980 м²',deadline:'18 жовтня',match:'Точний збіг',kind:'green',status:'Активна',source:'Prozorro',reason:'Назва та щільність підтверджені у специфікації.',product:'Євроізол Геотекстиль 300',chars:[['Матеріал','Геотекстиль'],['Щільність','300 г/м²'],['Обсяг','980 м²'],['Кандидат','Євроізол 300']]},
+      {title:'Благоустрій парку',buyer:'КП Зеленбуд',material:'Дренажна мембрана',amount:'1 100 м²',deadline:'22 жовтня',match:'Функціональний аналог',kind:'amber',status:'Активна',source:'Prozorro',reason:'Збіг виявлено за призначенням; потрібна перевірка міцності.',product:'Євроізол Дренаж',chars:[['Матеріал','Дренажна мембрана'],['Міцність','Не вказано'],['Обсяг','1 100 м²'],['Кандидат','Євроізол Дренаж']]}
+    ],commercial:[
+      {title:'Будівництво складського комплексу',buyer:'Девелоперська компанія',material:'Гідроізоляційна мембрана',amount:'4 800 м²',deadline:'12 жовтня',match:'Точний збіг',kind:'green',status:'Активна',source:'SmartTender',reason:'Назва та критичні параметри відповідають довіднику.',product:'Євроізол Hydro Pro',chars:[['Матеріал','Гідроізоляційна мембрана'],['Товщина','1,5 мм'],['Обсяг','4 800 м²'],['Кандидат','Hydro Pro']]},
+      {title:'Ремонт фасаду бізнес-центру',buyer:'Керуюча компанія',material:'Теплоізоляція',amount:'650 м³',deadline:'16 жовтня',match:'Потрібно перевірити',kind:'amber',status:'Активна',source:'Salesbook',reason:'Клас горючості не вказано у тендерній документації.',product:'Євроізол Thermal',chars:[['Матеріал','Теплоізоляція'],['Клас горючості','Не вказано'],['Обсяг','650 м³'],['Кандидат','Thermal']]}
+    ]};
+    let current='budget',selected=0;
+    const tbody=document.getElementById('tenders'),detail=document.getElementById('detail');
+    function render(){const rows=data[current];document.getElementById('tableTitle').textContent=current==='budget'?'Бюджетні закупівлі':'Комерційні закупівлі';tbody.innerHTML=rows.map((x,i)=>`<tr class="${i===selected?'selected':''}" onclick="pick(${i})"><td><div class="title">${x.title}</div><div class="small">${x.buyer} · ${x.source}</div></td><td>${x.material}<div class="small">${x.amount}</div></td><td>${x.deadline}</td><td><span class="chip ${x.kind}"><i class="dot-sm"></i>${x.match}</span></td><td><span class="chip blue">${x.status}</span></td></tr>`).join('');const x=rows[selected];detail.innerHTML=`<div class="detail-top"><h3>${x.title}</h3><span class="chip ${x.kind}">${x.match}</span></div><div class="source">${x.source} · Відкрити картку закупівлі</div>${x.kind==='amber'?`<div class="alert"><b>Потрібно перевірити:</b> ${x.reason}</div>`:`<div class="alert" style="border-color:var(--green);background:#edf9f3;color:#155b3f"><b>Підтверджено:</b> ${x.reason}</div>`}<div class="data"><div><span class="label">Замовник</span><b>${x.buyer}</b></div><div><span class="label">Строк подання</span><b>${x.deadline}</b></div><div><span class="label">Обсяг</span><b>${x.amount}</b></div><div><span class="label">Кандидат Євроізол</span><b>${x.product}</b></div></div><div class="compare"><h4>Порівняння характеристик</h4>${x.chars.map(a=>`<div class="compare-row"><span>${a[0]}</span><span>${a[1]}</span></div>`).join('')}</div><button class="action" onclick="toast('Макет: картка додана до роботи менеджера')">Додати до роботи</button>`}
+    function pick(i){selected=i;render()} window.pick=pick;
+    document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{current=b.dataset.type;selected=0;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));render()});
+    function toast(message){const e=document.getElementById('toast');e.textContent=message;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),3000)} window.toast=toast;render();
+  </script>
+</body>
+</html>
