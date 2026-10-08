@@ -1,0 +1,15 @@
+{
+  "name": "procurement-analysis-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Application for analysing Ukrainian construction procurements.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "build": "node -e \"console.log('Static files are ready in dist')\"",
+    "vercel-build": "npm run build"
+  }
+}
