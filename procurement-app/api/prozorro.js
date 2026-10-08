@@ -3,8 +3,43 @@
  * It deliberately contains no credentials: Prozorro's public API is queried
  * only when a client requests /api/prozorro.
  */
+const CONSTRUCTION_KEYWORDS = [
+  'нове будівництво', 'будівництво', 'реконструкц', 'капітальн',
+  'поточний ремонт', 'ремонт покрів', 'благоустр', 'укритт',
+  'фундамент', 'покрівл', 'дорожн', 'тротуар', 'дренаж'
+];
+
+const MATERIAL_RULES = [
+  { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
+  { material: 'ПВХ-мембрана', patterns: ['пвх-мембран', 'pvc мембран'] },
+  { material: 'дренажна мембрана', patterns: ['дренажн'] },
+  { material: 'гідроізоляційна мембрана', patterns: ['гідроізоляц', 'гідромембран'] },
+  { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] }
+];
+
+function tenderText(data) {
+  return [
+    data.title,
+    data.description,
+    data.classification?.description,
+    ...(data.items || []).flatMap((item) => [item.description, item.classification?.description])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function detectMaterial(text) {
+  return MATERIAL_RULES.find((rule) => rule.patterns.some((pattern) => text.includes(pattern)))?.material || '';
+}
+
+function isRelevant(text, material) {
+  return Boolean(material) || CONSTRUCTION_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
+function itemCharacteristics(data) {
+  return (data.items || []).map((item) => item.description).filter(Boolean).join('; ').slice(0, 1000);
+}
+
 async function latestProzorro() {
-  const feed = await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=8', {
+  const feed = await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=80&descending=1', {
     headers: { Accept: 'application/json' }
   });
 
@@ -13,7 +48,7 @@ async function latestProzorro() {
   }
 
   const payload = await feed.json();
-  const ids = (payload.data || []).map((item) => item.id).filter(Boolean).slice(0, 8);
+  const ids = (payload.data || []).map((item) => item.id).filter(Boolean);
   const records = await Promise.all(ids.map(async (id) => {
     const response = await fetch(`https://public-api.prozorro.gov.ua/api/2.5/tenders/${id}`, {
       headers: { Accept: 'application/json' }
@@ -22,6 +57,10 @@ async function latestProzorro() {
     if (!response.ok) return null;
 
     const { data } = await response.json();
+    const text = tenderText(data);
+    const material = detectMaterial(text);
+    if (!isRelevant(text, material)) return null;
+
     return {
       externalId: data.id,
       title: data.title || 'Без назви',
@@ -34,8 +73,8 @@ async function latestProzorro() {
       status: data.status || 'active.tendering',
       source: 'Prozorro',
       block: 'budget',
-      material: '',
-      characteristics: '',
+      material,
+      characteristics: itemCharacteristics(data),
       volume: '',
       winner: '',
       winnerContacts: '',
@@ -43,7 +82,7 @@ async function latestProzorro() {
     };
   }));
 
-  return records.filter(Boolean);
+  return records.filter(Boolean).slice(0, 8);
 }
 
 module.exports = async (request, response) => {
