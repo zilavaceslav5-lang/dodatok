@@ -1,9 +1,4 @@
 {
   "version": 2,
-  "cleanUrls": true,
-  "functions": {
-    "api/prozorro.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  "cleanUrls": true
 }
