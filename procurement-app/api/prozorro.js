@@ -22,7 +22,8 @@ function tenderText(data) {
     data.title,
     data.description,
     data.classification?.description,
-    ...(data.items || []).flatMap((item) => [item.description, item.classification?.description])
+    ...(data.items || []).flatMap((item) => [item.description, item.classification?.description]),
+    ...(data.documents || []).map((document) => document.title)
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -36,6 +37,39 @@ function isRelevant(text, material) {
 
 function itemCharacteristics(data) {
   return (data.items || []).map((item) => item.description).filter(Boolean).join('; ').slice(0, 1000);
+}
+
+function itemVolume(item) {
+  if (item.quantity === undefined || item.quantity === null) return '';
+  return `${item.quantity} ${item.unit?.name || item.unit?.code || 'од.'}`;
+}
+
+function materialRequirements(data) {
+  return (data.items || []).map((item, index) => {
+    const text = [item.description, item.classification?.description].filter(Boolean).join(' ');
+    const material = detectMaterial(text.toLowerCase());
+    if (!material) return null;
+
+    return {
+      material,
+      characteristics: text.slice(0, 1000),
+      volume: itemVolume(item),
+      evidence: `Позиція ${index + 1} у відкритих даних Prozorro: ${text}`.slice(0, 1200)
+    };
+  }).filter(Boolean);
+}
+
+function technicalDocuments(data) {
+  return (data.documents || []).filter((document) => {
+    const title = (document.title || '').toLowerCase();
+    const format = (document.format || '').toLowerCase();
+    return document.url && !format.includes('pkcs7') && !title.endsWith('.p7s');
+  }).slice(0, 10).map((document) => ({
+    title: document.title || 'Документ Prozorro',
+    format: document.format || '',
+    url: document.url,
+    publishedAt: document.datePublished || ''
+  }));
 }
 
 async function latestProzorro() {
@@ -60,6 +94,9 @@ async function latestProzorro() {
     const text = tenderText(data);
     const material = detectMaterial(text);
     if (!isRelevant(text, material)) return null;
+    const requirements = materialRequirements(data);
+    const primaryRequirement = requirements[0] || null;
+    const documents = technicalDocuments(data);
 
     return {
       externalId: data.id,
@@ -73,12 +110,14 @@ async function latestProzorro() {
       status: data.status || 'active.tendering',
       source: 'Prozorro',
       block: 'budget',
-      material,
-      characteristics: itemCharacteristics(data),
-      volume: '',
+      material: primaryRequirement?.material || material,
+      characteristics: primaryRequirement?.characteristics || itemCharacteristics(data),
+      volume: primaryRequirement?.volume || '',
       winner: '',
       winnerContacts: '',
-      evidence: 'Дані з публічного API Prozorro'
+      evidence: primaryRequirement?.evidence || 'Потребує перевірки технічної документації: матеріал не знайдено серед відкритих позицій закупівлі.',
+      requirements,
+      documents
     };
   }));
 
