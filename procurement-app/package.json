@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Application for analysing Ukrainian construction procurements.",
+  "dependencies": {
+    "pdf-parse": "1.1.1"
+  },
   "engines": {
     "node": ">=20"
   },
