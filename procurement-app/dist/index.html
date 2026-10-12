@@ -34,6 +34,12 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   let sessionUser = null;
   let cloudReady = false;
   const originalSave = save;
+  const TARGET_REGION_TERMS = ['київ', 'киев', 'kyiv', 'черніг', 'chernih', 'черкас', 'cherkas', 'житомир', 'zhytomyr'];
+  function isInTargetCoverage(tender) {
+    if (tender.source !== 'Prozorro' || !tender.externalId) return true;
+    const location = String(tender.region || '').toLowerCase();
+    return TARGET_REGION_TERMS.some(term => location.includes(term));
+  }
 
   function setStorageStatus(message) {
     $('storageState').textContent = message;
@@ -75,7 +81,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     const documents = {};
     docResult.data.forEach(d => (documents[d.procurement_id] ||= []).push(d));
     const remoteCatalog = catalogResult.data.map(p => ({ id: p.id, name: p.name, material: p.material, characteristics: p.characteristics, synonyms: p.synonyms, sourceUrl: p.source_url }));
-    const remoteTenders = tenderResult.data.map(t => tenderFromDb(t, documents));
+    const remoteTenders = tenderResult.data.map(t => tenderFromDb(t, documents)).filter(isInTargetCoverage);
     if (!remoteCatalog.length && !remoteTenders.length && (state.catalog.length || state.tenders.length)) {
       const move = confirm('У спільній базі ще немає даних. Перенести поточний локальний каталог і закупівлі для всієї команди?');
       if (move) await migrateLocalWorkspace();
@@ -164,7 +170,10 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   const localCatalogChange = $('catalogFile').onchange;
   $('catalogFile').onchange = async event => { await localCatalogChange(event); if (cloudReady) await withCloud(replaceCatalog); };
   const localProzorroSync = $('syncProzorro').onclick;
-  $('syncProzorro').onclick = async event => { await localProzorroSync(event); if (cloudReady) await withCloud(async () => { for (const t of state.tenders.filter(x => x.source === 'Prozorro')) await saveTender(t); }); };
+  $('syncProzorro').onclick = async event => { await localProzorroSync(event); if (cloudReady) await withCloud(async () => {
+    for (const t of state.tenders.filter(x => x.source === 'Prozorro')) await saveTender(t);
+    await loadWorkspace();
+  }); };
   const localPdfAnalysis = $('analyzeDocuments').onclick;
   $('analyzeDocuments').onclick = async event => { await localPdfAnalysis(event); const t = state.tenders.find(x => x.id === selected); if (t) await withCloud(() => saveTender(t)); };
 })();
