@@ -13,4 +13,159 @@
 <dialog id="winnerDialog"><div class="panel-head"><h2>Результат торгів</h2><button class="btn light" onclick="winnerDialog.close()">Закрити</button></div><form id="winnerForm" class="dialog-body"><div class="formgrid"><label class="full">Компанія-переможець<input name="winner" required></label><label class="full">Доступні публічні контакти<textarea name="contacts" placeholder="Телефон, email, адреса або посилання на профіль"></textarea></label></div><div class="dialog-actions"><button class="btn">Зберегти результат</button></div></form></dialog>
 <script>
 const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KEY)||'{"catalog":[],"tenders":[]}'),block='budget',selected=null;const $=id=>document.getElementById(id);function save(){localStorage.setItem(KEY,JSON.stringify(state));$('storageState').textContent='Дані збережено локально · '+new Date().toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'})}function esc(x=''){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]))}function tokens(x=''){return x.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(x=>x.length>2)}function match(t){if(t.documentConfidence==='Потрібно перевірити')return{type:'Потрібно перевірити',reason:'Матеріал знайдено у технічному PDF, але характеристики й сумісність потребують перевірки.',product:''};if(!t.material)return{type:'Потрібно перевірити',reason:'Матеріал не вказано у записі.',product:''};const words=tokens(t.material);const candidates=state.catalog.map(p=>{const text=(p.name+' '+p.material+' '+p.synonyms).toLowerCase();const hit=words.filter(w=>text.includes(w)).length;const chars=(t.characteristics||'').toLowerCase();const required=tokens(p.characteristics);const charHit=required.filter(w=>chars.includes(w)).length;return{p,score:hit*3+charHit,hit,charHit,required:required.length}}).sort((a,b)=>b.score-a.score);const best=candidates[0];if(!best||best.hit===0)return{type:'Немає відповідника',reason:'У каталозі немає позиції з подібною назвою матеріалу.',product:''};if(best.required&&best.charHit<best.required)return{type:'Потрібно перевірити',reason:'Назва матеріалу схожа, але не підтверджено всі характеристики: '+best.p.characteristics,product:best.p.name};return{type:'Точний збіг',reason:'Назва матеріалу та доступні характеристики відповідають каталогу.',product:best.p.name}}function chip(type){return type==='Точний збіг'?'good':type==='Немає відповідника'?'none':'warn'}function date(v){return v?new Date(v).toLocaleDateString('uk-UA'):'Не вказано'}function current(){return state.tenders.filter(t=>t.block===block).filter(t=>JSON.stringify(t).toLowerCase().includes($('search').value.toLowerCase()))}function render(){state.tenders.forEach(t=>t.match=match(t));save();const list=current();$('listTitle').textContent=block==='budget'?'Бюджетні закупівлі':'Комерційні закупівлі';$('count').textContent=list.length+' записів';$('total').textContent=state.tenders.length;$('review').textContent=state.tenders.filter(t=>t.match.type==='Потрібно перевірити').length;$('winners').textContent=state.tenders.filter(t=>t.winner).length;$('products').textContent=state.catalog.length;$('rows').innerHTML=list.map(t=>`<tr class="${selected===t.id?'selected':''}" onclick="pick('${t.id}')"><td><div class="title">${esc(t.title)}</div><div class="muted">${esc(t.buyer)} · ${esc(t.source)}</div></td><td>${esc(t.material||'—')}<div class="muted">${esc(t.volume||'')}</div></td><td>${date(t.deadline)}</td><td><span class="chip ${chip(t.match.type)}">${t.match.type}</span></td><td>${esc(t.winner||'—')}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">У цьому блоці поки немає закупівель.</td></tr>';const t=state.tenders.find(x=>x.id===selected);if(!t){$('detail').innerHTML='<p class="muted">Оберіть закупівлю у реєстрі.</p>';return}$('detail').innerHTML=`<h3>${esc(t.title)}</h3><p class="muted">${esc(t.source)} · <a href="${esc(t.url||'#')}" target="_blank">Відкрити джерело</a></p><div class="notice"><b>${t.match.type}</b><br>${esc(t.match.reason)}</div><div class="kv"><div><span class="label">Замовник</span><b>${esc(t.buyer)}</b></div><div><span class="label">Строк</span><b>${date(t.deadline)}</b></div><div><span class="label">Матеріал / обсяг</span><b>${esc(t.material||'—')} ${esc(t.volume||'')}</b></div><div><span class="label">Кандидат Євроізол</span><b>${esc(t.match.product||'—')}</b></div><div><span class="label">Переможець</span><b>${esc(t.winner||'Ще не визначений')}</b></div><div><span class="label">Контакти</span><b>${esc(t.winnerContacts||'—')}</b></div></div><div class="compare"><div><span>Характеристики у закупівлі</span><span>${esc(t.characteristics||'Не вказано')}</span></div><div><span>Доказ</span><span>${esc(t.evidence||t.url||'Не вказано')}</span></div><div><span>Технічні документи</span><span>${(t.documents||[]).map(d=>`<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.title)}</a>`).join('<br>')||'Технічні документи не опубліковані або доступний лише електронний підпис.'}</span></div><div><span>Аналіз PDF</span><span>${(t.documentAnalysis||[]).map(d=>`${esc(d.title)}: ${esc(d.findings?.map(f=>f.material+(f.characteristics?' — '+f.characteristics:'')).join(', ')||d.reason||d.status)}`).join('<br>')||'Ще не запускався.'}</span></div></div>`}function pick(id){selected=id;render()}window.pick=pick;function toast(msg){const e=$('toast');e.textContent=msg;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),3200)}$('search').oninput=render;document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{block=b.dataset.block;selected=null;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));render()});$('addTender').onclick=()=>$('tenderDialog').showModal();$('tenderForm').onsubmit=e=>{e.preventDefault();const x=Object.fromEntries(new FormData(e.target));state.tenders.unshift({...x,id:crypto.randomUUID(),status:'active'});e.target.reset();$('tenderDialog').close();block=x.block;selected=state.tenders[0].id;render();toast('Закупівлю збережено та зіставлено з каталогом')};$('editWinner').onclick=()=>{if(!selected)return toast('Спершу оберіть закупівлю');$('winnerDialog').showModal()};$('winnerForm').onsubmit=e=>{e.preventDefault();const x=Object.fromEntries(new FormData(e.target));const t=state.tenders.find(t=>t.id===selected);t.winner=x.winner;t.winnerContacts=x.contacts;$('winnerDialog').close();render();toast('Результат торгів оновлено')};$('analyzeDocuments').onclick=async()=>{if(!selected)return toast('Спершу оберіть закупівлю');const t=state.tenders.find(x=>x.id===selected);if(t.source!=='Prozorro'||!t.externalId)return toast('Аналіз PDF доступний для закупівель Prozorro');toast('Аналізую до трьох технічних PDF…');try{const r=await fetch('/api/document-analysis?tenderId='+encodeURIComponent(t.externalId));const x=await r.json();if(!r.ok)throw Error(x.error);t.documentAnalysis=x.analyzedDocuments||[];const findings=t.documentAnalysis.flatMap(d=>d.findings||[]);if(findings.length){t.documentConfidence='Потрібно перевірити';if(!t.material){t.material=findings[0].material;t.characteristics=findings[0].characteristics||'';t.evidence=findings[0].excerpt||t.evidence}}render();toast('PDF проаналізовано: '+t.documentAnalysis.length)}catch(e){toast('Не вдалося проаналізувати PDF: '+e.message)}};$('importCatalog').onclick=()=>$('catalogFile').click();$('catalogFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;const text=await file.text();const [head,...lines]=text.split(/\r?\n/).filter(Boolean);const keys=head.split(',').map(x=>x.trim().toLowerCase());const col=n=>keys.indexOf(n);const rows=lines.map(line=>line.split(',')).map(v=>({name:v[col('назва')]||v[col('name')]||'',material:v[col('матеріал')]||v[col('material')]||'',characteristics:v[col('характеристики')]||v[col('characteristics')]||'',synonyms:v[col('синоніми')]||v[col('synonyms')]||''})).filter(x=>x.name&&x.material);state.catalog=rows;render();toast('Імпортовано позицій каталогу: '+rows.length);e.target.value=''};$('exportExcel').onclick=()=>{const sheets=[['Бюджетні закупівлі',state.tenders.filter(t=>t.block==='budget')],['Комерційні закупівлі',state.tenders.filter(t=>t.block==='commercial')]];const cols=['Джерело','Посилання','Закупівля','Замовник','Строк','Матеріал','Характеристики','Обсяг','Продукт Євроізол','Тип відповідності','Причина перевірки','Переможець','Контакти переможця'];const xml=`<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">${sheets.map(([name,rows])=>`<Worksheet ss:Name="${name}"><Table><Row>${cols.map(c=>`<Cell><Data ss:Type="String">${esc(c)}</Data></Cell>`).join('')}</Row>${rows.map(t=>{const v=[t.source,t.url,t.title,t.buyer,t.deadline,t.material,t.characteristics,t.volume,t.match.product,t.match.type,t.match.reason,t.winner,t.winnerContacts];return `<Row>${v.map(x=>`<Cell><Data ss:Type="String">${esc(x||'')}</Data></Cell>`).join('')}</Row>`}).join('')}</Table></Worksheet>`).join('')}</Workbook>`;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([xml],{type:'application/vnd.ms-excel'}));a.download='аналіз-закупівель-євроізол.xls';a.click();URL.revokeObjectURL(a.href);toast('Excel-файл сформовано')};$('syncProzorro').onclick=async()=>{toast('Оновлюю релевантні закупівлі Prozorro…');try{const r=await fetch('/api/prozorro');const x=await r.json();if(!r.ok)throw Error(x.error);const preserved=state.tenders.filter(t=>!(t.source==='Prozorro'&&t.externalId));x.forEach(t=>{t.id=crypto.randomUUID();t.syncedAt=new Date().toISOString()});state.tenders=[...x,...preserved];render();toast('Prozorro: оновлено записів '+x.length+'. Інші записи збережено.')}catch(e){toast('Не вдалося оновити Prozorro: '+e.message)}};render();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* Shared workspace: Supabase Auth + database.  The public key is constrained by RLS. */
+(async function () {
+  const authButton = document.createElement('button');
+  authButton.className = 'btn light';
+  authButton.id = 'authButton';
+  authButton.textContent = 'Увійти для команди';
+  document.querySelector('.bar').append(authButton);
+
+  const authDialog = document.createElement('dialog');
+  authDialog.id = 'authDialog';
+  authDialog.innerHTML = '<div class="panel-head"><h2>Вхід до спільного простору</h2><button class="btn light" type="button">Закрити</button></div><form class="dialog-body" id="authForm"><p class="muted">Вкажіть робочу email-адресу. Ми надішлемо безпечне посилання для входу — пароль і Google-акаунт не потрібні.</p><label>Email<input required type="email" name="email" autocomplete="email" placeholder="name@company.ua"></label><div class="dialog-actions"><button class="btn" type="submit">Надіслати посилання</button></div></form>';
+  document.body.append(authDialog);
+  authDialog.querySelector('button').onclick = () => authDialog.close();
+
+  let db = null;
+  let sessionUser = null;
+  let cloudReady = false;
+  const originalSave = save;
+
+  function setStorageStatus(message) {
+    $('storageState').textContent = message;
+  }
+  function recordForDb(t) {
+    return {
+      id: t.id,
+      external_id: t.externalId || null,
+      source: t.source || '', block: t.block === 'commercial' ? 'commercial' : 'budget',
+      title: t.title || '', buyer: t.buyer || '', region: t.region || '',
+      budget: t.budget || null, currency: t.currency || 'UAH', deadline: t.deadline || null,
+      url: t.url || null, status: t.status || 'active', material: t.material || '',
+      characteristics: t.characteristics || '', volume: t.volume || '', evidence: t.evidence || '',
+      winner: t.winner || '', winner_contacts: t.winnerContacts || '',
+      document_confidence: t.documentConfidence || null, created_by: sessionUser.id
+    };
+  }
+  function tenderFromDb(t, documents) {
+    return {
+      id: t.id, externalId: t.external_id, source: t.source, block: t.block,
+      title: t.title, buyer: t.buyer, region: t.region, budget: t.budget, currency: t.currency,
+      deadline: t.deadline, url: t.url, status: t.status, material: t.material,
+      characteristics: t.characteristics, volume: t.volume, evidence: t.evidence,
+      winner: t.winner, winnerContacts: t.winner_contacts,
+      documentConfidence: t.document_confidence,
+      documents: (documents[t.id] || []).map(d => ({ title: d.title, format: d.format, url: d.external_url, publishedAt: d.published_at }))
+    };
+  }
+  async function runInBatches(rows, fn, batchSize = 200) {
+    for (let i = 0; i < rows.length; i += batchSize) await fn(rows.slice(i, i + batchSize));
+  }
+  async function loadWorkspace() {
+    const [catalogResult, tenderResult, docResult] = await Promise.all([
+      db.from('catalog_items').select('*').order('name'),
+      db.from('procurements').select('*').order('updated_at', { ascending: false }),
+      db.from('procurement_documents').select('*')
+    ]);
+    if (catalogResult.error || tenderResult.error || docResult.error) throw (catalogResult.error || tenderResult.error || docResult.error);
+    const documents = {};
+    docResult.data.forEach(d => (documents[d.procurement_id] ||= []).push(d));
+    const remoteCatalog = catalogResult.data.map(p => ({ id: p.id, name: p.name, material: p.material, characteristics: p.characteristics, synonyms: p.synonyms, sourceUrl: p.source_url }));
+    const remoteTenders = tenderResult.data.map(t => tenderFromDb(t, documents));
+    if (!remoteCatalog.length && !remoteTenders.length && (state.catalog.length || state.tenders.length)) {
+      const move = confirm('У спільній базі ще немає даних. Перенести поточний локальний каталог і закупівлі для всієї команди?');
+      if (move) await migrateLocalWorkspace();
+      else setStorageStatus('Локальні дані ще не перенесено у спільну базу');
+      return;
+    }
+    state.catalog = remoteCatalog;
+    state.tenders = remoteTenders;
+    originalSave();
+    render();
+    setStorageStatus('Спільні дані Supabase · ' + sessionUser.email);
+  }
+  async function migrateLocalWorkspace() {
+    setStorageStatus('Переношу локальні дані у спільну базу…');
+    const catalog = state.catalog.map(p => ({ name: p.name, material: p.material, characteristics: p.characteristics || '', synonyms: p.synonyms || '', source_url: p.sourceUrl || null, created_by: sessionUser.id }));
+    if (catalog.length) await runInBatches(catalog, async part => { const r = await db.from('catalog_items').insert(part); if (r.error) throw r.error; });
+    for (const t of state.tenders) await saveTender(t);
+    await loadWorkspace();
+    toast('Локальні дані перенесено у спільний простір');
+  }
+  async function saveTender(t) {
+    if (!cloudReady) return;
+    const record = recordForDb(t);
+    const options = t.externalId ? { onConflict: 'external_id' } : { onConflict: 'id' };
+    const result = await db.from('procurements').upsert(record, options).select('id').single();
+    if (result.error) throw result.error;
+    t.id = result.data.id;
+    if (Array.isArray(t.documents)) {
+      const removed = await db.from('procurement_documents').delete().eq('procurement_id', t.id);
+      if (removed.error) throw removed.error;
+      const docs = t.documents.filter(d => d.url).map(d => ({ procurement_id: t.id, title: d.title || 'Документ', format: d.format || '', external_url: d.url, published_at: d.publishedAt || null }));
+      if (docs.length) { const inserted = await db.from('procurement_documents').insert(docs); if (inserted.error) throw inserted.error; }
+    }
+  }
+  async function replaceCatalog() {
+    if (!cloudReady) return;
+    setStorageStatus('Синхронізую каталог…');
+    const removed = await db.from('catalog_items').delete().not('id', 'is', null);
+    if (removed.error) throw removed.error;
+    const rows = state.catalog.map(p => ({ name: p.name, material: p.material, characteristics: p.characteristics || '', synonyms: p.synonyms || '', source_url: p.sourceUrl || null, created_by: sessionUser.id }));
+    await runInBatches(rows, async part => { const r = await db.from('catalog_items').insert(part); if (r.error) throw r.error; });
+    await loadWorkspace();
+  }
+  async function withCloud(action) {
+    try { await action(); setStorageStatus('Спільні дані Supabase · ' + sessionUser.email); }
+    catch (error) { console.error(error); toast('Не вдалося зберегти в Supabase: ' + error.message); }
+  }
+  async function setSession(session) {
+    sessionUser = session && session.user;
+    cloudReady = Boolean(sessionUser);
+    authButton.textContent = sessionUser ? 'Вийти · ' + sessionUser.email : 'Увійти для команди';
+    if (!sessionUser) { setStorageStatus('Увійдіть, щоб працювати зі спільною базою'); return; }
+    await withCloud(loadWorkspace);
+  }
+  try {
+    const response = await fetch('/api/supabase-config');
+    const config = await response.json();
+    if (!response.ok) throw Error(config.error || 'Конфігурація недоступна');
+    db = window.supabase.createClient(config.url, config.anonKey);
+    const currentSession = await db.auth.getSession();
+    await setSession(currentSession.data.session);
+    db.auth.onAuthStateChange((_event, session) => setTimeout(() => setSession(session), 0));
+  } catch (error) {
+    console.warn('Supabase is not ready', error);
+    setStorageStatus('Хмарна база ще не підключена — працює локальний режим');
+  }
+
+  authButton.onclick = async () => {
+    if (!db) return toast('Supabase ще не підключено. Перевірте змінні Vercel та перезапустіть сайт.');
+    if (sessionUser) { await db.auth.signOut(); return; }
+    authDialog.showModal();
+  };
+  $('authForm').onsubmit = async event => {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get('email');
+    const result = await db.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+    if (result.error) return toast('Не вдалося надіслати лист: ' + result.error.message);
+    authDialog.close();
+    toast('Посилання для входу надіслано на ' + email);
+  };
+
+  const localTenderSubmit = $('tenderForm').onsubmit;
+  $('tenderForm').onsubmit = async event => { await localTenderSubmit(event); const t = state.tenders.find(x => x.id === selected); if (t) await withCloud(() => saveTender(t)); };
+  const localWinnerSubmit = $('winnerForm').onsubmit;
+  $('winnerForm').onsubmit = async event => { await localWinnerSubmit(event); const t = state.tenders.find(x => x.id === selected); if (t) await withCloud(() => saveTender(t)); };
+  const localCatalogChange = $('catalogFile').onchange;
+  $('catalogFile').onchange = async event => { await localCatalogChange(event); if (cloudReady) await withCloud(replaceCatalog); };
+  const localProzorroSync = $('syncProzorro').onclick;
+  $('syncProzorro').onclick = async event => { await localProzorroSync(event); if (cloudReady) await withCloud(async () => { for (const t of state.tenders.filter(x => x.source === 'Prozorro')) await saveTender(t); }); };
+  const localPdfAnalysis = $('analyzeDocuments').onclick;
+  $('analyzeDocuments').onclick = async event => { await localPdfAnalysis(event); const t = state.tenders.find(x => x.id === selected); if (t) await withCloud(() => saveTender(t)); };
+})();
 </script></body></html>
