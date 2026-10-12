@@ -17,6 +17,42 @@ const MATERIAL_RULES = [
   { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] }
 ];
 
+// Sales coverage is deliberately limited to the regions agreed for this
+// workspace. We use both `region` and `locality`, because Prozorro records
+// are not always populated consistently. A tender with no usable delivery
+// location is excluded rather than being silently treated as in-scope.
+const TARGET_AREA_LABELS = [
+  ['Київ / Київська область', ['київ', 'киев', 'kyiv']],
+  ['Чернігівська область', ['черніг', 'chernih']],
+  ['Черкаська область', ['черкас', 'cherkas']],
+  ['Житомирська область', ['житомир', 'zhytomyr']]
+];
+
+function normalizeLocation(value) {
+  return String(value || '').toLowerCase().replace(/[’'`]/g, '').trim();
+}
+
+function deliveryAddresses(data) {
+  return [data.deliveryAddress, ...(data.items || []).map((item) => item.deliveryAddress)]
+    .filter((address) => address && (address.region || address.locality))
+    .map((address) => ({
+      region: address.region || '',
+      locality: address.locality || ''
+    }));
+}
+
+function targetAreaFor(address) {
+  const location = normalizeLocation(`${address.region} ${address.locality}`);
+  return TARGET_AREA_LABELS.find(([, terms]) => terms.some((term) => location.includes(term)))?.[0] || '';
+}
+
+function targetDeliveryAreas(data) {
+  const addresses = deliveryAddresses(data);
+  const areas = addresses.map(targetAreaFor);
+  if (!addresses.length || areas.some((area) => !area)) return [];
+  return [...new Set(areas)];
+}
+
 function tenderText(data) {
   return [
     data.title,
@@ -94,6 +130,8 @@ async function latestProzorro() {
     const text = tenderText(data);
     const material = detectMaterial(text);
     if (!isRelevant(text, material)) return null;
+    const deliveryAreas = targetDeliveryAreas(data);
+    if (!deliveryAreas.length) return null;
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
     const documents = technicalDocuments(data);
@@ -102,7 +140,7 @@ async function latestProzorro() {
       externalId: data.id,
       title: data.title || 'Без назви',
       buyer: data.procuringEntity?.name || 'Не вказано',
-      region: data.deliveryAddress?.region || data.items?.[0]?.deliveryAddress?.region || 'Не вказано',
+      region: deliveryAreas.join('; '),
       budget: data.value?.amount || '',
       currency: data.value?.currency || 'UAH',
       deadline: data.tenderPeriod?.endDate || '',
