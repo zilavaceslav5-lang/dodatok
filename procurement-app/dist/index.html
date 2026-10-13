@@ -6,7 +6,7 @@
 <main><section class="head"><div><h1>Можливості продажу</h1><p>Автоматичне зіставлення матеріалів за назвою і характеристиками</p></div><div class="actions"><button class="btn light" id="importCatalog">Імпорт каталогу CSV</button><button class="btn light" id="syncProzorro">Оновити Prozorro</button><button class="btn gold" id="exportExcel">Excel-експорт</button><button class="btn" id="addTender">Додати закупівлю</button></div></section>
 <section class="stats"><article class="stat"><small>Усього записів</small><b id="total">0</b></article><article class="stat"><small>Потрібно перевірити</small><b id="review">0</b></article><article class="stat"><small>Переможець визначений</small><b id="winners">0</b></article><article class="stat"><small>Каталог Євроізол</small><b id="products">0</b></article></section>
 <div class="tabs"><button class="tab active" data-block="budget">Бюджетні закупівлі</button><button class="tab" data-block="commercial">Комерційні закупівлі</button></div>
-<section class="grid"><article class="panel"><div class="panel-head"><h2 id="listTitle">Бюджетні закупівлі</h2><span class="muted" id="count"></span></div><div class="filters"><input id="search" placeholder="Пошук за закупівлею, замовником або матеріалом"></div><div class="scroll"><table><thead><tr><th>Закупівля / замовник</th><th>Матеріал</th><th>Строк</th><th>Відповідність</th><th>Переможець</th></tr></thead><tbody id="rows"></tbody></table></div></article><aside class="panel"><div class="panel-head"><h2>Картка можливості</h2><div class="actions"><button class="btn light" id="analyzeDocuments">Аналіз PDF</button><button class="btn light" id="editWinner">Результат торгів</button></div></div><div class="panel-body detail" id="detail"><p class="muted">Оберіть закупівлю у реєстрі.</p></div></aside></section>
+<section class="grid"><article class="panel"><div class="panel-head"><h2 id="listTitle">Бюджетні закупівлі</h2><span class="muted" id="count"></span></div><div class="filters"><input id="search" placeholder="Пошук за закупівлею, замовником або матеріалом"></div><div class="scroll"><table><thead><tr><th>Закупівля / замовник</th><th>Матеріал</th><th>Строк</th><th>Відповідність</th><th>Переможець</th></tr></thead><tbody id="rows"></tbody></table></div></article><aside class="panel"><div class="panel-head"><h2>Картка можливості</h2><div class="actions"><button class="btn light" id="analyzeDocuments">Аналіз PDF</button><button class="btn light" id="editWinner">Результат торгів</button><button class="btn light" id="deleteTender">Видалити</button></div></div><div class="panel-body detail" id="detail"><p class="muted">Оберіть закупівлю у реєстрі.</p></div></aside></section>
 <section class="schedule"><article class="panel run"><b>09:00</b><p>Основна перевірка всіх підключених джерел. Часовий пояс: Europe/Kyiv.</p></article><article class="panel run"><b>18:00</b><p>Додаткова перевірка нових або змінених закупівель. Email потребує окремих налаштувань.</p></article></section></main>
 <input type="file" id="catalogFile" accept=".csv,text/csv" class="hidden"><div id="toast"></div>
 <dialog id="tenderDialog"><div class="panel-head"><h2>Нова закупівля</h2><button class="btn light" onclick="tenderDialog.close()">Закрити</button></div><form id="tenderForm" class="dialog-body"><div class="formgrid"><label>Блок<select name="block"><option value="budget">Бюджетні закупівлі</option><option value="commercial">Комерційні закупівлі</option></select></label><label>Джерело<input name="source" required placeholder="Prozorro або назва платформи"></label><label class="full">Назва закупівлі<input name="title" required></label><label>Замовник<input name="buyer" required></label><label>Строк подання<input type="date" name="deadline"></label><label>Матеріал<input name="material" placeholder="Наприклад, геотекстиль"></label><label>Обсяг<input name="volume" placeholder="Наприклад, 500 м²"></label><label class="full">Характеристики<textarea name="characteristics" placeholder="Наприклад, щільність 300 г/м²; товщина 1,5 мм"></textarea></label><label class="full">Посилання / доказ<input name="url" placeholder="https://..."></label></div><div class="dialog-actions"><button type="button" class="btn light" onclick="tenderDialog.close()">Скасувати</button><button class="btn">Зберегти та зіставити</button></div></form></dialog>
@@ -34,15 +34,12 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   let sessionUser = null;
   let cloudReady = false;
   const originalSave = save;
-  const TARGET_REGION_TERMS = ['київ', 'киев', 'kyiv', 'черніг', 'chernih', 'черкас', 'cherkas', 'житомир', 'zhytomyr'];
-  function isInTargetCoverage(tender) {
-    if (tender.source !== 'Prozorro' || !tender.externalId) return true;
-    const location = String(tender.region || '').toLowerCase();
-    return TARGET_REGION_TERMS.some(term => location.includes(term));
-  }
 
   function setStorageStatus(message) {
     $('storageState').textContent = message;
+  }
+  function sharedStorageStatus() {
+    return sessionUser?.email ? 'Спільні дані Supabase · ' + sessionUser.email : 'Спільні дані Supabase синхронізовано';
   }
   function recordForDb(t) {
     return {
@@ -81,7 +78,9 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     const documents = {};
     docResult.data.forEach(d => (documents[d.procurement_id] ||= []).push(d));
     const remoteCatalog = catalogResult.data.map(p => ({ id: p.id, name: p.name, material: p.material, characteristics: p.characteristics, synonyms: p.synonyms, sourceUrl: p.source_url }));
-    const remoteTenders = tenderResult.data.map(t => tenderFromDb(t, documents)).filter(isInTargetCoverage);
+    // Keep the shared history intact. New fetches are limited on the server,
+    // while a manager decides manually which older records to remove.
+    const remoteTenders = tenderResult.data.map(t => tenderFromDb(t, documents));
     if (!remoteCatalog.length && !remoteTenders.length && (state.catalog.length || state.tenders.length)) {
       const move = confirm('У спільній базі ще немає даних. Перенести поточний локальний каталог і закупівлі для всієї команди?');
       if (move) await migrateLocalWorkspace();
@@ -92,7 +91,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     state.tenders = remoteTenders;
     originalSave();
     render();
-    setStorageStatus('Спільні дані Supabase · ' + sessionUser.email);
+    setStorageStatus(sharedStorageStatus());
   }
   async function migrateLocalWorkspace() {
     setStorageStatus('Переношу локальні дані у спільну базу…');
@@ -126,7 +125,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     await loadWorkspace();
   }
   async function withCloud(action) {
-    try { await action(); setStorageStatus('Спільні дані Supabase · ' + sessionUser.email); }
+    try { await action(); setStorageStatus(sharedStorageStatus()); }
     catch (error) { console.error(error); toast('Не вдалося зберегти в Supabase: ' + error.message); }
   }
   async function setSession(session) {
@@ -176,5 +175,90 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   }); };
   const localPdfAnalysis = $('analyzeDocuments').onclick;
   $('analyzeDocuments').onclick = async event => { await localPdfAnalysis(event); const t = state.tenders.find(x => x.id === selected); if (t) await withCloud(() => saveTender(t)); };
+
+  // A refresh must never silently remove the manager's working list. Existing
+  // Prozorro records stay until the manager explicitly removes them.
+  $('syncProzorro').onclick = async () => {
+    toast('Оновлюю релевантні закупівлі Prozorro…');
+    try {
+      const response = await fetch('/api/prozorro');
+      const incoming = await response.json();
+      if (!response.ok) throw Error(incoming.error);
+
+      const existing = new Map(state.tenders
+        .filter(t => t.source === 'Prozorro' && t.externalId)
+        .map(t => [t.externalId, t]));
+      incoming.forEach(t => {
+        const previous = existing.get(t.externalId);
+        t.id = previous?.id || crypto.randomUUID();
+        t.syncedAt = new Date().toISOString();
+      });
+      const refreshedIds = new Set(incoming.map(t => t.externalId));
+      const retained = state.tenders.filter(t => !refreshedIds.has(t.externalId));
+      state.tenders = [...incoming, ...retained];
+      render();
+
+      if (cloudReady) {
+        await withCloud(async () => {
+          for (const tender of state.tenders.filter(t => t.source === 'Prozorro')) await saveTender(tender);
+          await loadWorkspace();
+        });
+      }
+      toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.`);
+    } catch (error) {
+      toast('Не вдалося оновити Prozorro: ' + error.message);
+    }
+  };
+
+  $('deleteTender').onclick = async () => {
+    if (!selected) return toast('Спершу оберіть закупівлю');
+    const tender = state.tenders.find(t => t.id === selected);
+    if (!tender || !confirm(`Видалити закупівлю «${tender.title}»? Цю дію можна виконати лише вручну.`)) return;
+    try {
+      if (cloudReady) {
+        const result = await db.from('procurements').delete().eq('id', tender.id);
+        if (result.error) throw result.error;
+      }
+      state.tenders = state.tenders.filter(t => t.id !== tender.id);
+      selected = null;
+      render();
+      toast('Закупівлю видалено');
+    } catch (error) {
+      toast('Не вдалося видалити закупівлю: ' + error.message);
+    }
+  };
+
+  // Give an explicit, honest outcome for text PDFs versus scans/unavailable files.
+  $('analyzeDocuments').onclick = async () => {
+    if (!selected) return toast('Спершу оберіть закупівлю');
+    const tender = state.tenders.find(t => t.id === selected);
+    if (tender.source !== 'Prozorro' || !tender.externalId) return toast('Аналіз PDF доступний для закупівель Prozorro');
+    toast('Перевіряю до трьох PDF-документів…');
+    try {
+      const response = await fetch('/api/document-analysis?tenderId=' + encodeURIComponent(tender.externalId));
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error);
+      tender.documentAnalysis = result.analyzedDocuments || [];
+      const findings = tender.documentAnalysis.flatMap(document => document.findings || []);
+      if (findings.length) {
+        tender.documentConfidence = 'Потрібно перевірити';
+        if (!tender.material) {
+          tender.material = findings[0].material;
+          tender.characteristics = findings[0].characteristics || '';
+          tender.evidence = findings[0].excerpt || tender.evidence;
+        }
+      }
+      render();
+      if (cloudReady) await withCloud(() => saveTender(tender));
+      const scans = tender.documentAnalysis.filter(document => document.status === 'Потрібно перевірити').length;
+      toast(findings.length
+        ? `PDF: знайдено згадки матеріалів — перевірте ${findings.length} позицій.`
+        : scans
+          ? `PDF: ${scans} документ(и) потребують ручної перевірки або OCR.`
+          : result.message || 'PDF-документів для автоматичного аналізу не знайдено.');
+    } catch (error) {
+      toast('Не вдалося проаналізувати PDF: ' + error.message);
+    }
+  };
 })();
 </script></body></html>

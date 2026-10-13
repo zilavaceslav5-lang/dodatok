@@ -3,11 +3,18 @@
  * It deliberately contains no credentials: Prozorro's public API is queried
  * only when a client requests /api/prozorro.
  */
-const CONSTRUCTION_KEYWORDS = [
-  'нове будівництво', 'будівництво', 'реконструкц', 'капітальн',
-  'поточний ремонт', 'ремонт покрів', 'благоустр', 'укритт',
-  'фундамент', 'покрівл', 'дорожн', 'тротуар', 'дренаж'
+// General repair or construction is not enough evidence of a MIZOL sales
+// opportunity.  The terms below are deliberately limited to envelope,
+// insulation, waterproofing, roofing and drainage work/materials.
+const TITLE_RELEVANCE_TERMS = [
+  'геотекстил', 'геотканин', 'мембран', 'гідроізоляц', 'гідромембран',
+  'покрів', 'рулонн покрів', 'утеплен', 'теплоізоляц', 'термоізоляц',
+  'дренаж', 'фундамент', 'відмостк', 'водовідвед'
 ];
+
+// CPV / ДК 021:2015 classes that are materially connected to the above work.
+// A generic capital-repair code is intentionally not sufficient.
+const TARGET_DK_PREFIXES = ['4411', '4526', '4532'];
 
 const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
@@ -63,12 +70,30 @@ function tenderText(data) {
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
+function dkCodes(data) {
+  return [data.classification?.id, ...(data.items || []).map((item) => item.classification?.id)]
+    .filter(Boolean)
+    .map((code) => String(code));
+}
+
+function titleHasRelevantSignal(data) {
+  const title = String(data.title || '').toLowerCase();
+  return TITLE_RELEVANCE_TERMS.some((term) => title.includes(term));
+}
+
+function hasRelevantDkCode(data) {
+  return dkCodes(data).some((code) => TARGET_DK_PREFIXES.some((prefix) => code.replace(/\D/g, '').startsWith(prefix)));
+}
+
 function detectMaterial(text) {
   return MATERIAL_RULES.find((rule) => rule.patterns.some((pattern) => text.includes(pattern)))?.material || '';
 }
 
-function isRelevant(text, material) {
-  return Boolean(material) || CONSTRUCTION_KEYWORDS.some((keyword) => text.includes(keyword));
+function isRelevant(data, text, material) {
+  // Direct material evidence in an item/description has the highest priority.
+  // Otherwise retain only a title signal or a relevant CPV class, never a
+  // generic "repair" / "construction" word.
+  return Boolean(material) || titleHasRelevantSignal(data) || hasRelevantDkCode(data);
 }
 
 function itemCharacteristics(data) {
@@ -129,7 +154,7 @@ async function latestProzorro() {
     const { data } = await response.json();
     const text = tenderText(data);
     const material = detectMaterial(text);
-    if (!isRelevant(text, material)) return null;
+    if (!isRelevant(data, text, material)) return null;
     const deliveryAreas = targetDeliveryAreas(data);
     if (!deliveryAreas.length) return null;
     const requirements = materialRequirements(data);
@@ -153,7 +178,7 @@ async function latestProzorro() {
       volume: primaryRequirement?.volume || '',
       winner: '',
       winnerContacts: '',
-      evidence: primaryRequirement?.evidence || 'Потребує перевірки технічної документації: матеріал не знайдено серед відкритих позицій закупівлі.',
+      evidence: `${primaryRequirement?.evidence || 'Потребує перевірки технічної документації: матеріал не знайдено серед відкритих позицій закупівлі.'} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
       requirements,
       documents
     };

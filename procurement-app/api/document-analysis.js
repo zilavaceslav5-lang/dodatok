@@ -57,6 +57,9 @@ async function analyzeDocument(document) {
 
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length > MAX_BYTES) throw new Error('Файл більший за 8 МБ');
+    if (bytes.subarray(0, 4).toString('ascii') !== '%PDF') {
+      throw new Error('За посиланням Prozorro повернувся не PDF-файл');
+    }
 
     const parsed = await pdf(bytes, { max: 25 });
     const text = compactText(parsed.text);
@@ -65,7 +68,7 @@ async function analyzeDocument(document) {
         title: document.title || 'Документ Prozorro',
         url: document.url,
         status: 'Потрібно перевірити',
-        reason: 'PDF не містить доступного тексту; ймовірно, це скан і потребує OCR.',
+        reason: 'PDF не містить текстового шару — ймовірно, це скан. Автоматичний аналіз не робить висновку; відкрийте документ або застосуйте OCR.',
         findings: []
       };
     }
@@ -111,7 +114,13 @@ module.exports = async (request, response) => {
     const documents = publicPdfDocuments(data);
     const analysis = await Promise.all(documents.map(analyzeDocument));
     response.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=900');
-    response.status(200).json({ tenderId, analyzedDocuments: analysis });
+    response.status(200).json({
+      tenderId,
+      analyzedDocuments: analysis,
+      message: analysis.length
+        ? `Перевірено PDF-документів: ${analysis.length}`
+        : 'У Prozorro не знайдено доступних PDF-документів для цієї закупівлі.'
+    });
   } catch (error) {
     response.status(502).json({ error: error.message || 'Не вдалося проаналізувати документи Prozorro' });
   }
