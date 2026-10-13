@@ -35,6 +35,31 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   let cloudReady = false;
   const originalSave = save;
 
+  // Prozorro returns active and completed procedures. Keep both in the same
+  // register and make the procedure state visible instead of hiding it.
+  const procurementStatusLabels = {
+    'active.tendering': 'Прийом пропозицій',
+    'active.auction': 'Аукціон',
+    'active.qualification': 'Кваліфікація',
+    'active.awarded': 'Визначення переможця',
+    complete: 'Завершено',
+    cancelled: 'Скасовано',
+    unsuccessful: 'Неуспішно'
+  };
+  const baseRender = render;
+  render = function () {
+    baseRender();
+    const list = current();
+    $('rows').querySelectorAll('tr').forEach((row, index) => {
+      const tender = list[index];
+      if (!tender) return;
+      const summary = row.querySelector('.muted');
+      if (!summary) return;
+      const label = procurementStatusLabels[tender.status] || tender.status || 'Статус не вказано';
+      summary.insertAdjacentHTML('beforeend', ` · <span class="chip ${tender.status === 'complete' ? 'none' : tender.status?.startsWith('active.') ? 'good' : 'warn'}">${esc(label)}</span>`);
+    });
+  };
+
   function setStorageStatus(message) {
     $('storageState').textContent = message;
   }
