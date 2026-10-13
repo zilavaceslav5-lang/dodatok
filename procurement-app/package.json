@@ -4,7 +4,9 @@
   "private": true,
   "description": "Application for analysing Ukrainian construction procurements.",
   "dependencies": {
-    "pdf-parse": "1.1.1"
+    "mammoth": "1.9.1",
+    "pdf-parse": "1.1.1",
+    "xlsx": "0.18.5"
   },
   "engines": {
     "node": ">=20"

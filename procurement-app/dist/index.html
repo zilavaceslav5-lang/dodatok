@@ -253,12 +253,13 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     }
   };
 
-  // Give an explicit, honest outcome for text PDFs versus scans/unavailable files.
+  // Give an explicit, honest outcome for machine-readable documents versus scans/unavailable files.
+  $('analyzeDocuments').textContent = 'Аналіз документів';
   $('analyzeDocuments').onclick = async () => {
     if (!selected) return toast('Спершу оберіть закупівлю');
     const tender = state.tenders.find(t => t.id === selected);
-    if (tender.source !== 'Prozorro' || !tender.externalId) return toast('Аналіз PDF доступний для закупівель Prozorro');
-    toast('Перевіряю до трьох PDF-документів…');
+    if (tender.source !== 'Prozorro' || !tender.externalId) return toast('Аналіз документів доступний для закупівель Prozorro');
+    toast('Перевіряю до п’яти машиночитаних документів…');
     try {
       const response = await fetch('/api/document-analysis?tenderId=' + encodeURIComponent(tender.externalId));
       const result = await response.json();
@@ -277,12 +278,12 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
       if (cloudReady) await withCloud(() => saveTender(tender));
       const scans = tender.documentAnalysis.filter(document => document.status === 'Потрібно перевірити').length;
       toast(findings.length
-        ? `PDF: знайдено згадки матеріалів — перевірте ${findings.length} позицій.`
+        ? `Документи: знайдено згадки матеріалів — перевірте ${findings.length} позицій.`
         : scans
-          ? `PDF: ${scans} документ(и) потребують ручної перевірки або OCR.`
-          : result.message || 'PDF-документів для автоматичного аналізу не знайдено.');
+          ? `Документи: ${scans} файл(и) потребують ручної перевірки або OCR.`
+          : result.message || 'Машиночитаних документів для аналізу не знайдено.');
     } catch (error) {
-      toast('Не вдалося проаналізувати PDF: ' + error.message);
+      toast('Не вдалося проаналізувати документи: ' + error.message);
     }
   };
 })();
