@@ -153,18 +153,8 @@ function technicalDocuments(data) {
   }));
 }
 
-async function latestProzorro() {
-  const feed = await fetch('https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=80&descending=1', {
-    headers: { Accept: 'application/json' }
-  });
-
-  if (!feed.ok) {
-    throw new Error(`Prozorro відповів кодом ${feed.status}`);
-  }
-
-  const payload = await feed.json();
-  const ids = (payload.data || []).map((item) => item.id).filter(Boolean);
-  const records = await Promise.all(ids.map(async (id) => {
+async function tenderById(id, stats) {
+  try {
     const response = await fetch(`https://public-api.prozorro.gov.ua/api/2.5/tenders/${id}`, {
       headers: { Accept: 'application/json' }
     });
@@ -172,12 +162,22 @@ async function latestProzorro() {
     if (!response.ok) return null;
 
     const { data } = await response.json();
+    stats.scanned += 1;
+    const coverageAreas = targetCoverageAreas(data);
+    if (!coverageAreas.length) {
+      stats.excludedOutsideCoverage += 1;
+      return null;
+    }
+    stats.inCoverage += 1;
     const text = tenderText(data);
     const material = detectMaterial(text);
     const selectionReason = relevanceReason(data, material);
-    if (!selectionReason) return null;
-    const coverageAreas = targetCoverageAreas(data);
-    if (!coverageAreas.length) return null;
+    if (!selectionReason) {
+      stats.excludedNoEvidence += 1;
+      return null;
+    }
+    const selectionType = material ? 'confirmed' : 'potential';
+    stats[selectionType === 'confirmed' ? 'materialEvidence' : 'potential'] += 1;
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
     const documents = technicalDocuments(data);
@@ -199,13 +199,53 @@ async function latestProzorro() {
       volume: primaryRequirement?.volume || '',
       winner: '',
       winnerContacts: '',
+      selectionType,
       evidence: `${primaryRequirement?.evidence || selectionReason} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
       requirements,
       documents
     };
-  }));
+  } catch {
+    return null;
+  }
+}
 
-  return records.filter(Boolean).slice(0, 8);
+async function latestProzorro() {
+  let pageUrl = 'https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=80&descending=1';
+  const records = [];
+  const stats = {
+    pages: 0,
+    scanned: 0,
+    inCoverage: 0,
+    materialEvidence: 0,
+    potential: 0,
+    excludedOutsideCoverage: 0,
+    excludedNoEvidence: 0
+  };
+
+  // The reference sample covers more than the newest feed page. Look through
+  // up to three pages, but stop as soon as the work queue is full.
+  for (let page = 0; page < 3 && pageUrl && records.length < 8; page += 1) {
+    const feed = await fetch(pageUrl, { headers: { Accept: 'application/json' } });
+    if (!feed.ok) throw new Error(`Prozorro відповів кодом ${feed.status}`);
+    const payload = await feed.json();
+    stats.pages += 1;
+    const ids = (payload.data || []).map((item) => item.id).filter(Boolean);
+
+    // Avoid opening dozens of connections to the public API at once.
+    for (let start = 0; start < ids.length && records.length < 8; start += 12) {
+      const batch = await Promise.all(ids.slice(start, start + 12).map((id) => tenderById(id, stats)));
+      records.push(...batch.filter(Boolean));
+    }
+
+    const next = payload.next_page?.uri || payload.next_page?.path;
+    pageUrl = next ? new URL(next, 'https://public-api.prozorro.gov.ua').toString() : '';
+  }
+
+  return {
+    version: 'benchmark-v2',
+    records: records.slice(0, 8),
+    stats
+  };
 }
 
 module.exports = async (request, response) => {

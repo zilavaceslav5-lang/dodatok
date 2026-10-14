@@ -207,8 +207,9 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     toast('Оновлюю релевантні закупівлі Prozorro…');
     try {
       const response = await fetch('/api/prozorro');
-      const incoming = await response.json();
-      if (!response.ok) throw Error(incoming.error);
+      const payload = await response.json();
+      if (!response.ok) throw Error(payload.error);
+      const incoming = Array.isArray(payload) ? payload : (payload.records || []);
 
       const existing = new Map(state.tenders
         .filter(t => t.source === 'Prozorro' && t.externalId)
@@ -229,7 +230,11 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
           await loadWorkspace();
         });
       }
-      toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.`);
+      const stats = payload.stats;
+      const report = stats
+        ? ` Перевірено ${stats.scanned}; у ваших областях ${stats.inCoverage}; з матеріалами ${stats.materialEvidence}; потенційних ${stats.potential}.`
+        : '';
+      toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.${report}`);
     } catch (error) {
       toast('Не вдалося оновити Prozorro: ' + error.message);
     }
