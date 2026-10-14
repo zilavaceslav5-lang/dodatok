@@ -14,12 +14,12 @@ const TITLE_RELEVANCE_TERMS = [
 
 // CPV / ДК 021:2015 classes that are materially connected to the above work.
 // A generic capital-repair code is intentionally not sufficient.
-const TARGET_DK_PREFIXES = ['4411', '4526', '4532'];
+const TARGET_DK_PREFIXES = ['4526', '4532'];
 
 const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
   { material: 'ПВХ-мембрана', patterns: ['пвх-мембран', 'pvc мембран'] },
-  { material: 'дренажна мембрана', patterns: ['дренажн'] },
+  { material: 'дренажна мембрана', allPatterns: ['дренажн', 'мембран'] },
   { material: 'гідроізоляційна мембрана', patterns: ['гідроізоляц', 'гідромембран'] },
   { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] }
 ];
@@ -65,8 +65,7 @@ function tenderText(data) {
     data.title,
     data.description,
     data.classification?.description,
-    ...(data.items || []).flatMap((item) => [item.description, item.classification?.description]),
-    ...(data.documents || []).map((document) => document.title)
+    ...(data.items || []).flatMap((item) => [item.description, item.classification?.description])
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
@@ -86,14 +85,22 @@ function hasRelevantDkCode(data) {
 }
 
 function detectMaterial(text) {
-  return MATERIAL_RULES.find((rule) => rule.patterns.some((pattern) => text.includes(pattern)))?.material || '';
+  return MATERIAL_RULES.find((rule) =>
+    rule.patterns?.some((pattern) => text.includes(pattern)) ||
+    rule.allPatterns?.every((pattern) => text.includes(pattern))
+  )?.material || '';
 }
 
-function isRelevant(data, text, material) {
-  // Direct material evidence in an item/description has the highest priority.
-  // Otherwise retain only a title signal or a relevant CPV class, never a
-  // generic "repair" / "construction" word.
-  return Boolean(material) || titleHasRelevantSignal(data) || hasRelevantDkCode(data);
+function relevanceReason(data, material) {
+  // A concrete material in an open item/description is strong evidence.
+  if (material) return 'У відкритих даних виявлено конкретний матеріал для перевірки.';
+  // A work code by itself (or a broad keyword by itself) causes too many false
+  // positives. A potential opportunity requires both signals and must still be
+  // confirmed in the technical assignment/resource statement.
+  if (titleHasRelevantSignal(data) && hasRelevantDkCode(data)) {
+    return 'Назва та код ДК вказують на потенційну потребу; технічне завдання потребує перевірки.';
+  }
+  return '';
 }
 
 function itemCharacteristics(data) {
@@ -154,7 +161,8 @@ async function latestProzorro() {
     const { data } = await response.json();
     const text = tenderText(data);
     const material = detectMaterial(text);
-    if (!isRelevant(data, text, material)) return null;
+    const selectionReason = relevanceReason(data, material);
+    if (!selectionReason) return null;
     const deliveryAreas = targetDeliveryAreas(data);
     if (!deliveryAreas.length) return null;
     const requirements = materialRequirements(data);
@@ -178,7 +186,7 @@ async function latestProzorro() {
       volume: primaryRequirement?.volume || '',
       winner: '',
       winnerContacts: '',
-      evidence: `${primaryRequirement?.evidence || 'Потребує перевірки технічної документації: матеріал не знайдено серед відкритих позицій закупівлі.'} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
+      evidence: `${primaryRequirement?.evidence || selectionReason} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
       requirements,
       documents
     };
@@ -195,7 +203,7 @@ module.exports = async (request, response) => {
   }
 
   try {
-    response.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=900');
+    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
     response.status(200).json(await latestProzorro());
   } catch (error) {
     response.status(502).json({ error: error.message || 'Не вдалося отримати дані Prozorro' });
