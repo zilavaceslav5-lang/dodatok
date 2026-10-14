@@ -8,19 +8,25 @@
 // insulation, waterproofing, roofing and drainage work/materials.
 const TITLE_RELEVANCE_TERMS = [
   'геотекстил', 'геотканин', 'мембран', 'гідроізоляц', 'гідромембран',
-  'покрів', 'рулонн покрів', 'утеплен', 'теплоізоляц', 'термоізоляц',
-  'дренаж', 'фундамент', 'відмостк', 'водовідвед'
+  'покрів', 'дах', 'фасад', 'рулонн покрів', 'утеплен', 'теплоізоляц',
+  'термоізоляц', 'пароізоляц', 'вітробар', 'гідробар', 'склосіт',
+  'водостіч', 'водовідвед', 'поливо', 'зрошув', 'вентиляц', 'опалення',
+  'інженерн мереж', 'трубопровод'
 ];
 
 // CPV / ДК 021:2015 classes that are materially connected to the above work.
 // A generic capital-repair code is intentionally not sufficient.
-const TARGET_DK_PREFIXES = ['4526', '4532'];
+const TARGET_DK_PREFIXES = ['4523', '4526', '4532', '4533', '4545', '4511271'];
 
 const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
   { material: 'ПВХ-мембрана', patterns: ['пвх-мембран', 'pvc мембран'] },
   { material: 'дренажна мембрана', allPatterns: ['дренажн', 'мембран'] },
-  { material: 'гідроізоляційна мембрана', patterns: ['гідроізоляц', 'гідромембран'] },
+  { material: 'гідро- і пароізоляція', patterns: ['гідроізоляц', 'гідромембран', 'пароізоляц', 'гідробар', 'вітробар', 'рубероїд', 'бітумн мастик'] },
+  { material: 'теплоізоляція / мінеральна вата', patterns: ['мінеральн ват', 'мінераловат', 'базальтов', 'скловат', 'теплоізоляц', 'утеплювач', 'пінополістирол', 'екструдован'] },
+  { material: 'фасадна склосітка', patterns: ['склосіт', 'армувальн сіт'] },
+  { material: 'водостічна система', patterns: ['водостічн'] },
+  { material: 'труби ПВХ / ПП / ПЕ', patterns: ['труба пвх', 'труби пвх', 'труба пп', 'труби пп', 'поліпропіленов', 'поліетиленов', 'труба пе', 'пе 100'] },
   { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] }
 ];
 
@@ -48,13 +54,20 @@ function deliveryAddresses(data) {
     }));
 }
 
+function buyerAddress(data) {
+  const address = data.procuringEntity?.address;
+  return address && (address.region || address.locality) ? [{ region: address.region || '', locality: address.locality || '' }] : [];
+}
+
 function targetAreaFor(address) {
   const location = normalizeLocation(`${address.region} ${address.locality}`);
   return TARGET_AREA_LABELS.find(([, terms]) => terms.some((term) => location.includes(term)))?.[0] || '';
 }
 
-function targetDeliveryAreas(data) {
-  const addresses = deliveryAddresses(data);
+function targetCoverageAreas(data) {
+  // The supplied benchmark selects by the buyer's service region. Prefer the
+  // buyer address; delivery locations are a fallback when it is unavailable.
+  const addresses = buyerAddress(data).length ? buyerAddress(data) : deliveryAddresses(data);
   const areas = addresses.map(targetAreaFor);
   if (!addresses.length || areas.some((area) => !area)) return [];
   return [...new Set(areas)];
@@ -163,8 +176,8 @@ async function latestProzorro() {
     const material = detectMaterial(text);
     const selectionReason = relevanceReason(data, material);
     if (!selectionReason) return null;
-    const deliveryAreas = targetDeliveryAreas(data);
-    if (!deliveryAreas.length) return null;
+    const coverageAreas = targetCoverageAreas(data);
+    if (!coverageAreas.length) return null;
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
     const documents = technicalDocuments(data);
@@ -173,7 +186,7 @@ async function latestProzorro() {
       externalId: data.id,
       title: data.title || 'Без назви',
       buyer: data.procuringEntity?.name || 'Не вказано',
-      region: deliveryAreas.join('; '),
+      region: coverageAreas.join('; '),
       budget: data.value?.amount || '',
       currency: data.value?.currency || 'UAH',
       deadline: data.tenderPeriod?.endDate || '',
