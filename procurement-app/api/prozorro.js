@@ -227,7 +227,6 @@ async function tenderById(id, stats) {
       stats.excludedOldWinner += 1;
       return null;
     }
-    if (recognition.isRecent) stats.recentWinners += 1;
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
     const assessment = relevanceAssessment(data, primaryRequirement?.material || '');
@@ -235,6 +234,7 @@ async function tenderById(id, stats) {
       stats.excludedNoEvidence += 1;
       return null;
     }
+    if (recognition.isRecent) stats.recentWinners += 1;
     const selectionType = assessment.selectionType;
     stats[selectionType === 'confirmed' ? 'materialEvidence' : 'potential'] += 1;
     const documents = technicalDocuments(data);
