@@ -207,7 +207,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
     toast('Перевіряю нові та недавні закупівлі Prozorro…');
     try {
       const allRecords = [];
-      const stats = { pages: 0, scanned: 0, inCoverage: 0, materialEvidence: 0, potential: 0 };
+      const stats = { pages: 0, scanned: 0, inCoverage: 0, materialEvidence: 0, potential: 0, recentWinners: 0 };
       let offset = '';
       // Three short calls are more reliable on Vercel than one long function.
       // They extend coverage without ever deleting the manager's history.
@@ -223,6 +223,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
         stats.inCoverage += pageStats.inCoverage || 0;
         stats.materialEvidence += pageStats.materialEvidence || 0;
         stats.potential += pageStats.potential || 0;
+        stats.recentWinners += pageStats.recentWinners || 0;
         offset = payload.nextOffset || '';
         if (!offset) break;
       }
@@ -247,7 +248,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
           await loadWorkspace();
         });
       }
-      const report = ` Перевірено ${stats.scanned}; у ваших областях ${stats.inCoverage}; підтверджено матеріалом ${stats.materialEvidence}; потенційних ${stats.potential}.`;
+      const report = ` Перевірено ${stats.scanned}; у ваших областях ${stats.inCoverage}; підтверджено матеріалом ${stats.materialEvidence}; потенційних ${stats.potential}; з переможцем до 10 днів ${stats.recentWinners}.`;
       toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.${report}`);
     } catch (error) {
       toast('Не вдалося оновити Prozorro: ' + error.message);

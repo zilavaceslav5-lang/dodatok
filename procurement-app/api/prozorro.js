@@ -22,6 +22,9 @@ const TARGET_DK_PREFIXES = [
   '4511271', '452', '453', '454'
 ];
 
+const WINNER_RECOGNITION_WINDOW_DAYS = 10;
+const WINNER_RECOGNITION_WINDOW_MS = WINNER_RECOGNITION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
 const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
   { material: 'ПВХ-мембрана', patterns: ['пвх-мембран', 'pvc мембран'] },
@@ -182,6 +185,25 @@ function technicalDocuments(data) {
   }));
 }
 
+function winnerRecognition(data, now = Date.now()) {
+  const activeAwards = (data.awards || [])
+    .filter((award) => award?.status === 'active')
+    .sort((left, right) => Date.parse(right.date || right.dateModified || 0) - Date.parse(left.date || left.dateModified || 0));
+  const award = activeAwards[0];
+  if (!award) return { hasWinner: false, isRecent: false, winner: '', awardedAt: '' };
+
+  const awardedAt = award.date || award.dateModified || '';
+  const timestamp = Date.parse(awardedAt);
+  const age = Number.isFinite(timestamp) ? now - timestamp : Number.POSITIVE_INFINITY;
+  const winner = (award.suppliers || []).map((supplier) => supplier.name).filter(Boolean).join('; ');
+  return {
+    hasWinner: true,
+    isRecent: age >= 0 && age <= WINNER_RECOGNITION_WINDOW_MS,
+    winner,
+    awardedAt
+  };
+}
+
 async function tenderById(id, stats) {
   try {
     const response = await fetch(`https://public-api.prozorro.gov.ua/api/2.5/tenders/${id}`, {
@@ -198,6 +220,14 @@ async function tenderById(id, stats) {
       return null;
     }
     stats.inCoverage += 1;
+    const recognition = winnerRecognition(data);
+    // Keep active tenders as before. When a winner has been determined, show
+    // the opportunity only during the agreed ten-day sales window.
+    if (recognition.hasWinner && !recognition.isRecent) {
+      stats.excludedOldWinner += 1;
+      return null;
+    }
+    if (recognition.isRecent) stats.recentWinners += 1;
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
     const assessment = relevanceAssessment(data, primaryRequirement?.material || '');
@@ -225,8 +255,9 @@ async function tenderById(id, stats) {
       material: primaryRequirement?.material || observedMaterial,
       characteristics: primaryRequirement?.characteristics || itemCharacteristics(data),
       volume: primaryRequirement?.volume || '',
-      winner: '',
+      winner: recognition.winner,
       winnerContacts: '',
+      winnerRecognizedAt: recognition.awardedAt,
       selectionType,
       documentConfidence: selectionType === 'potential' ? 'Потрібно перевірити' : null,
       evidence: `${primaryRequirement?.evidence || assessment.reason} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
@@ -251,8 +282,10 @@ async function latestProzorro(offset = '') {
     inCoverage: 0,
     materialEvidence: 0,
     potential: 0,
+    recentWinners: 0,
     excludedOutsideCoverage: 0,
-    excludedNoEvidence: 0
+    excludedNoEvidence: 0,
+    excludedOldWinner: 0
   };
   let nextOffset = '';
 
