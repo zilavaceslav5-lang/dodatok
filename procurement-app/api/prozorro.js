@@ -14,9 +14,13 @@ const TITLE_RELEVANCE_TERMS = [
   'інженерн мереж', 'трубопровод'
 ];
 
-// CPV / ДК 021:2015 classes that are materially connected to the above work.
-// A generic capital-repair code is intentionally not sufficient.
-const TARGET_DK_PREFIXES = ['4523', '4526', '4532', '4533', '4545', '4511271'];
+// CPV / ДК 021:2015 classes seen in the benchmark: building materials as
+// well as construction, engineering, roofing and landscaping works. A code
+// never selects a tender by itself; it only supports a textual/documents clue.
+const TARGET_DK_PREFIXES = [
+  '4411', '4419', '442', '443', '444', '445', '446',
+  '4511271', '452', '453', '454'
+];
 
 const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
@@ -82,15 +86,18 @@ function tenderText(data) {
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
+function documentText(data) {
+  return (data.documents || []).map((document) => document.title || '').join(' ').toLowerCase();
+}
+
 function dkCodes(data) {
   return [data.classification?.id, ...(data.items || []).map((item) => item.classification?.id)]
     .filter(Boolean)
     .map((code) => String(code));
 }
 
-function titleHasRelevantSignal(data) {
-  const title = String(data.title || '').toLowerCase();
-  return TITLE_RELEVANCE_TERMS.some((term) => title.includes(term));
+function hasRelevantSignal(text) {
+  return TITLE_RELEVANCE_TERMS.some((term) => text.includes(term));
 }
 
 function hasRelevantDkCode(data) {
@@ -104,16 +111,38 @@ function detectMaterial(text) {
   )?.material || '';
 }
 
-function relevanceReason(data, material) {
-  // A concrete material in an open item/description is strong evidence.
-  if (material) return 'У відкритих даних виявлено конкретний матеріал для перевірки.';
-  // A work code by itself (or a broad keyword by itself) causes too many false
-  // positives. A potential opportunity requires both signals and must still be
-  // confirmed in the technical assignment/resource statement.
-  if (titleHasRelevantSignal(data) && hasRelevantDkCode(data)) {
-    return 'Назва та код ДК вказують на потенційну потребу; технічне завдання потребує перевірки.';
+function relevanceAssessment(data, directMaterial) {
+  // Only a material in an item/specification is confirmed. A word in a title
+  // can be promising, but is never presented as proof of a product need.
+  if (directMaterial) {
+    return {
+      selectionType: 'confirmed',
+      reason: 'Матеріал виявлено в позиції або специфікації відкритих даних Prozorro.'
+    };
   }
-  return '';
+
+  const titleOrDescription = [data.title, data.description].filter(Boolean).join(' ').toLowerCase();
+  const hasWorkSignal = hasRelevantSignal(titleOrDescription);
+  const hasTechnicalDocumentSignal = hasRelevantSignal(documentText(data));
+  const hasMaterialMention = Boolean(detectMaterial(tenderText(data)));
+  const hasCode = hasRelevantDkCode(data);
+
+  // One clear work/material/document signal is enough to put a procurement
+  // into the review queue. ДК strengthens the explanation but cannot select a
+  // generic tender alone.
+  if (hasWorkSignal || hasTechnicalDocumentSignal || hasMaterialMention) {
+    const source = hasTechnicalDocumentSignal
+      ? 'назва технічного документа'
+      : hasMaterialMention
+        ? 'назва або опис матеріалу'
+        : 'тип робіт';
+    return {
+      selectionType: 'potential',
+      reason: `Потенційна можливість: ${source}${hasCode ? ' і код ДК' : ''} потребують перевірки технічного завдання.`
+    };
+  }
+
+  return null;
 }
 
 function itemCharacteristics(data) {
@@ -169,18 +198,17 @@ async function tenderById(id, stats) {
       return null;
     }
     stats.inCoverage += 1;
-    const text = tenderText(data);
-    const material = detectMaterial(text);
-    const selectionReason = relevanceReason(data, material);
-    if (!selectionReason) {
+    const requirements = materialRequirements(data);
+    const primaryRequirement = requirements[0] || null;
+    const assessment = relevanceAssessment(data, primaryRequirement?.material || '');
+    if (!assessment) {
       stats.excludedNoEvidence += 1;
       return null;
     }
-    const selectionType = material ? 'confirmed' : 'potential';
+    const selectionType = assessment.selectionType;
     stats[selectionType === 'confirmed' ? 'materialEvidence' : 'potential'] += 1;
-    const requirements = materialRequirements(data);
-    const primaryRequirement = requirements[0] || null;
     const documents = technicalDocuments(data);
+    const observedMaterial = detectMaterial(tenderText(data));
 
     return {
       externalId: data.id,
@@ -194,13 +222,14 @@ async function tenderById(id, stats) {
       status: data.status || 'active.tendering',
       source: 'Prozorro',
       block: 'budget',
-      material: primaryRequirement?.material || material,
+      material: primaryRequirement?.material || observedMaterial,
       characteristics: primaryRequirement?.characteristics || itemCharacteristics(data),
       volume: primaryRequirement?.volume || '',
       winner: '',
       winnerContacts: '',
       selectionType,
-      evidence: `${primaryRequirement?.evidence || selectionReason} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
+      documentConfidence: selectionType === 'potential' ? 'Потрібно перевірити' : null,
+      evidence: `${primaryRequirement?.evidence || assessment.reason} Код ДК 021:2015: ${dkCodes(data).join(', ') || 'не вказано'}`.slice(0, 1800),
       requirements,
       documents
     };
@@ -209,8 +238,12 @@ async function tenderById(id, stats) {
   }
 }
 
-async function latestProzorro() {
-  let pageUrl = 'https://public-api.prozorro.gov.ua/api/2.5/tenders?limit=80&descending=1';
+async function latestProzorro(offset = '') {
+  const feedUrl = new URL('https://public-api.prozorro.gov.ua/api/2.5/tenders');
+  feedUrl.searchParams.set('limit', '80');
+  feedUrl.searchParams.set('descending', '1');
+  if (offset) feedUrl.searchParams.set('offset', offset);
+  let pageUrl = feedUrl.toString();
   const records = [];
   const stats = {
     pages: 0,
@@ -221,6 +254,7 @@ async function latestProzorro() {
     excludedOutsideCoverage: 0,
     excludedNoEvidence: 0
   };
+  let nextOffset = '';
 
   // A browser action must complete within Vercel's short serverless timeout.
   // Scan one complete, recent feed page per click; keeping the manager's
@@ -238,14 +272,16 @@ async function latestProzorro() {
       records.push(...batch.filter(Boolean));
     }
 
+    nextOffset = String(payload.next_page?.offset || '');
     const next = payload.next_page?.uri || payload.next_page?.path;
     pageUrl = next ? new URL(next, 'https://public-api.prozorro.gov.ua').toString() : '';
   }
 
   return {
-    version: 'benchmark-v2',
+    version: 'benchmark-v3',
     records: records.slice(0, 8),
-    stats
+    stats,
+    nextOffset
   };
 }
 
@@ -258,7 +294,7 @@ module.exports = async (request, response) => {
 
   try {
     response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-    response.status(200).json(await latestProzorro());
+    response.status(200).json(await latestProzorro(String(request.query?.offset || '')));
   } catch (error) {
     response.status(502).json({ error: error.message || 'Не вдалося отримати дані Prozorro' });
   }
