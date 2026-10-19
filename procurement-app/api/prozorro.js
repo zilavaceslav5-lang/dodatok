@@ -222,9 +222,10 @@ async function latestProzorro() {
     excludedNoEvidence: 0
   };
 
-  // The reference sample covers more than the newest feed page. Look through
-  // up to three pages, but stop as soon as the work queue is full.
-  for (let page = 0; page < 3 && pageUrl && records.length < 8; page += 1) {
+  // A browser action must complete within Vercel's short serverless timeout.
+  // Scan one complete, recent feed page per click; keeping the manager's
+  // existing queue means consecutive refreshes never erase earlier results.
+  for (let page = 0; page < 1 && pageUrl && records.length < 8; page += 1) {
     const feed = await fetch(pageUrl, { headers: { Accept: 'application/json' } });
     if (!feed.ok) throw new Error(`Prozorro відповів кодом ${feed.status}`);
     const payload = await feed.json();
@@ -232,8 +233,8 @@ async function latestProzorro() {
     const ids = (payload.data || []).map((item) => item.id).filter(Boolean);
 
     // Avoid opening dozens of connections to the public API at once.
-    for (let start = 0; start < ids.length && records.length < 8; start += 12) {
-      const batch = await Promise.all(ids.slice(start, start + 12).map((id) => tenderById(id, stats)));
+    for (let start = 0; start < ids.length && records.length < 8; start += 20) {
+      const batch = await Promise.all(ids.slice(start, start + 20).map((id) => tenderById(id, stats)));
       records.push(...batch.filter(Boolean));
     }
 
