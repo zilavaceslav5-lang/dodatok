@@ -3,26 +3,16 @@
  * It deliberately contains no credentials: Prozorro's public API is queried
  * only when a client requests /api/prozorro.
  */
-// General repair or construction is not enough evidence of a MIZOL sales
-// opportunity.  The terms below are deliberately limited to envelope,
-// insulation, waterproofing, roofing and drainage work/materials.
-const TITLE_RELEVANCE_TERMS = [
-  'геотекстил', 'геотканин', 'мембран', 'гідроізоляц', 'гідромембран',
-  'покрів', 'дах', 'фасад', 'рулонн покрів', 'утеплен', 'теплоізоляц',
-  'термоізоляц', 'пароізоляц', 'вітробар', 'гідробар', 'склосіт',
-  'водостіч', 'водовідвед', 'поливо', 'зрошув', 'вентиляц', 'опалення',
-  'інженерн мереж', 'трубопровод'
+// Stage one deliberately finds a broad, reviewable queue of construction
+// works. Stage two reads the technical assignment / bills and confirms only
+// the opportunities containing Euroizol-relevant materials.
+const STAGE_ONE_WORK_TERMS = [
+  'нове будівництв', 'реконструкц', 'капітальн ремонт',
+  'укрит', 'дах', 'покрів', 'фундамент', 'підвал',
+  'дорог', 'благоустр', 'лагун', 'озер', 'ставк', 'водойм'
 ];
-
-// CPV / ДК 021:2015 classes seen in the benchmark: building materials as
-// well as construction, engineering, roofing and landscaping works. A code
-// never selects a tender by itself; it only supports a textual/documents clue.
-const TARGET_DK_PREFIXES = [
-  '4411', '4419', '442', '443', '444', '445', '446',
-  '4511271', '452', '453', '454'
-];
-
-const WINNER_RECOGNITION_WINDOW_DAYS = 10;
+const BUILDING_TERMS = ['будівл', 'будинок', 'приміщенн', 'корпус', 'споруд'];
+const WINNER_RECOGNITION_WINDOW_DAYS = 30;
 const WINNER_RECOGNITION_WINDOW_MS = WINNER_RECOGNITION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 const MATERIAL_RULES = [
@@ -89,22 +79,10 @@ function tenderText(data) {
   ].filter(Boolean).join(' ').toLowerCase();
 }
 
-function documentText(data) {
-  return (data.documents || []).map((document) => document.title || '').join(' ').toLowerCase();
-}
-
 function dkCodes(data) {
   return [data.classification?.id, ...(data.items || []).map((item) => item.classification?.id)]
     .filter(Boolean)
     .map((code) => String(code));
-}
-
-function hasRelevantSignal(text) {
-  return TITLE_RELEVANCE_TERMS.some((term) => text.includes(term));
-}
-
-function hasRelevantDkCode(data) {
-  return dkCodes(data).some((code) => TARGET_DK_PREFIXES.some((prefix) => code.replace(/\D/g, '').startsWith(prefix)));
 }
 
 function detectMaterial(text) {
@@ -114,9 +92,9 @@ function detectMaterial(text) {
   )?.material || '';
 }
 
-function relevanceAssessment(data, directMaterial) {
-  // Only a material in an item/specification is confirmed. A word in a title
-  // can be promising, but is never presented as proof of a product need.
+function stageOneAssessment(data, directMaterial) {
+  // A directly named material is immediately worth keeping; it still needs
+  // technical characteristics to establish a product match.
   if (directMaterial) {
     return {
       selectionType: 'confirmed',
@@ -124,24 +102,14 @@ function relevanceAssessment(data, directMaterial) {
     };
   }
 
-  const titleOrDescription = [data.title, data.description].filter(Boolean).join(' ').toLowerCase();
-  const hasWorkSignal = hasRelevantSignal(titleOrDescription);
-  const hasTechnicalDocumentSignal = hasRelevantSignal(documentText(data));
-  const hasMaterialMention = Boolean(detectMaterial(tenderText(data)));
-  const hasCode = hasRelevantDkCode(data);
-
-  // One clear work/material/document signal is enough to put a procurement
-  // into the review queue. ДК strengthens the explanation but cannot select a
-  // generic tender alone.
-  if (hasWorkSignal || hasTechnicalDocumentSignal || hasMaterialMention) {
-    const source = hasTechnicalDocumentSignal
-      ? 'назва технічного документа'
-      : hasMaterialMention
-        ? 'назва або опис матеріалу'
-        : 'тип робіт';
+  const text = tenderText(data);
+  const isCurrentBuildingRepair = text.includes('поточн ремонт') && BUILDING_TERMS.some((term) => text.includes(term));
+  const workTerm = STAGE_ONE_WORK_TERMS.find((term) => text.includes(term));
+  if (workTerm || isCurrentBuildingRepair) {
+    const source = isCurrentBuildingRepair ? 'поточний ремонт будівлі або споруди' : `вид робіт: ${workTerm}`;
     return {
       selectionType: 'potential',
-      reason: `Потенційна можливість: ${source}${hasCode ? ' і код ДК' : ''} потребують перевірки технічного завдання.`
+      reason: `Перший етап відбору — ${source}. Потрібен аналіз технічного завдання, відомості обсягів робіт або відомості ресурсів.`
     };
   }
 
@@ -222,14 +190,14 @@ async function tenderById(id, stats) {
     stats.inCoverage += 1;
     const recognition = winnerRecognition(data);
     // Keep active tenders as before. When a winner has been determined, show
-    // the opportunity only during the agreed ten-day sales window.
+    // the opportunity only during the agreed thirty-day sales window.
     if (recognition.hasWinner && !recognition.isRecent) {
       stats.excludedOldWinner += 1;
       return null;
     }
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
-    const assessment = relevanceAssessment(data, primaryRequirement?.material || '');
+    const assessment = stageOneAssessment(data, primaryRequirement?.material || '');
     if (!assessment) {
       stats.excludedNoEvidence += 1;
       return null;
@@ -311,7 +279,7 @@ async function latestProzorro(offset = '') {
   }
 
   return {
-    version: 'benchmark-v3',
+    version: 'two-stage-v1',
     records: records.slice(0, 8),
     stats,
     nextOffset

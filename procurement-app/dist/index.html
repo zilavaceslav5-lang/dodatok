@@ -248,7 +248,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
           await loadWorkspace();
         });
       }
-      const report = ` Перевірено ${stats.scanned}; у ваших областях ${stats.inCoverage}; підтверджено матеріалом ${stats.materialEvidence}; потенційних ${stats.potential}; з переможцем до 10 днів ${stats.recentWinners}.`;
+      const report = ` Перевірено ${stats.scanned}; у ваших областях ${stats.inCoverage}; підтверджено матеріалом ${stats.materialEvidence}; перший етап відбору ${stats.potential}; з переможцем до 30 днів ${stats.recentWinners}.`;
       toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.${report}`);
     } catch (error) {
       toast('Не вдалося оновити Prozorro: ' + error.message);
@@ -274,12 +274,12 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   };
 
   // Give an explicit, honest outcome for machine-readable documents versus scans/unavailable files.
-  $('analyzeDocuments').textContent = 'Аналіз документів';
+  $('analyzeDocuments').textContent = 'Перевірити ТЗ і відомості';
   $('analyzeDocuments').onclick = async () => {
     if (!selected) return toast('Спершу оберіть закупівлю');
     const tender = state.tenders.find(t => t.id === selected);
     if (tender.source !== 'Prozorro' || !tender.externalId) return toast('Аналіз документів доступний для закупівель Prozorro');
-    toast('Перевіряю до п’яти машиночитаних документів…');
+    toast('Перевіряю ТЗ, відомості обсягів і ресурсів у доступних документах…');
     try {
       const response = await fetch('/api/document-analysis?tenderId=' + encodeURIComponent(tender.externalId));
       const result = await response.json();
@@ -287,6 +287,7 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
       tender.documentAnalysis = result.analyzedDocuments || [];
       const findings = tender.documentAnalysis.flatMap(document => document.findings || []);
       if (findings.length) {
+        tender.selectionType = 'confirmed';
         tender.documentConfidence = 'Потрібно перевірити';
         if (!tender.material) {
           tender.material = findings[0].material;

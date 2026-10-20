@@ -8,8 +8,12 @@ const MATERIAL_RULES = [
   { material: 'геотекстиль', patterns: ['геотекстил', 'геотканин'] },
   { material: 'ПВХ-мембрана', patterns: ['пвх-мембран', 'pvc мембран'] },
   { material: 'дренажна мембрана', patterns: ['дренажн'] },
-  { material: 'гідроізоляційна мембрана', patterns: ['гідроізоляц', 'гідромембран', 'бітумн'] },
-  { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] }
+  { material: 'гідро- і пароізоляція', patterns: ['гідроізоляц', 'гідромембран', 'пароізоляц', 'гідробар', 'вітробар', 'рубероїд', 'бітумн мастик'] },
+  { material: 'покрівельна мембрана', patterns: ['покрівельн мембран', 'рулонн покрів'] },
+  { material: 'теплоізоляція / мінеральна вата', patterns: ['мінеральн ват', 'мінераловат', 'базальтов', 'скловат', 'теплоізоляц', 'утеплювач', 'пінополістирол', 'екструдован'] },
+  { material: 'фасадна склосітка', patterns: ['склосіт', 'армувальн сіт'] },
+  { material: 'водостічна система', patterns: ['водостічн'] },
+  { material: 'труби ПВХ / ПП / ПЕ', patterns: ['труба пвх', 'труби пвх', 'труба пп', 'труби пп', 'поліпропіленов', 'поліетиленов', 'труба пе', 'пе 100'] }
 ];
 const SUPPORTED_FORMATS = new Set(['pdf', 'docx', 'xlsx', 'xls', 'ods', 'csv', 'tsv', 'txt', 'json', 'xml', 'html', 'htm', 'rtf']);
 
@@ -32,8 +36,20 @@ function documentFormat(document) {
   return '';
 }
 
+function documentPriority(document) {
+  const title = String(document.title || '').toLowerCase();
+  if (/технічн.{0,12}завдан/.test(title)) return 0;
+  if (/відоміст.{0,20}(обсяг|робіт)/.test(title)) return 1;
+  if (/відоміст.{0,20}ресурс/.test(title)) return 2;
+  if (/(специфікац|локальн.{0,12}кошторис|кошторис)/.test(title)) return 3;
+  return 10;
+}
+
 function publicMachineReadableDocuments(data) {
-  return (data.documents || []).filter((document) => document.url && SUPPORTED_FORMATS.has(documentFormat(document))).slice(0, MAX_DOCUMENTS);
+  return (data.documents || [])
+    .filter((document) => document.url && SUPPORTED_FORMATS.has(documentFormat(document)))
+    .sort((left, right) => documentPriority(left) - documentPriority(right))
+    .slice(0, MAX_DOCUMENTS);
 }
 
 function compactText(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
