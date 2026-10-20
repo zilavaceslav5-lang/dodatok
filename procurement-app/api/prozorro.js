@@ -256,6 +256,7 @@ async function latestProzorro(offset = '') {
     excludedOldWinner: 0
   };
   let nextOffset = '';
+  let oldestModified = '';
 
   // A browser action must complete within Vercel's short serverless timeout.
   // Scan one complete, recent feed page per click; keeping the manager's
@@ -265,6 +266,12 @@ async function latestProzorro(offset = '') {
     if (!feed.ok) throw new Error(`Prozorro відповів кодом ${feed.status}`);
     const payload = await feed.json();
     stats.pages += 1;
+    const modifiedDates = (payload.data || [])
+      .map((item) => item.dateModified || item.public_modified)
+      .filter(Boolean)
+      .map((value) => typeof value === 'number' ? value * 1000 : Date.parse(value))
+      .filter(Number.isFinite);
+    if (modifiedDates.length) oldestModified = new Date(Math.min(...modifiedDates)).toISOString();
     const ids = (payload.data || []).map((item) => item.id).filter(Boolean);
 
     // Avoid opening dozens of connections to the public API at once.
@@ -282,7 +289,8 @@ async function latestProzorro(offset = '') {
     version: 'two-stage-v1',
     records: records.slice(0, 8),
     stats,
-    nextOffset
+    nextOffset,
+    oldestModified
   };
 }
 

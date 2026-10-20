@@ -209,9 +209,11 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
       const allRecords = [];
       const stats = { pages: 0, scanned: 0, inCoverage: 0, materialEvidence: 0, potential: 0, recentWinners: 0 };
       let offset = '';
-      // Three short calls are more reliable on Vercel than one long function.
-      // They extend coverage without ever deleting the manager's history.
-      for (let page = 0; page < 3; page += 1) {
+      // Prozorro's feed is ordered by the latest modification, not by tender
+      // publication date. Continue through the feed until its 30-day boundary
+      // so active tenders published earlier in the month are not skipped.
+      const lookbackStart = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      for (let page = 0; page < 30; page += 1) {
         const response = await fetch('/api/prozorro' + (offset ? '?offset=' + encodeURIComponent(offset) : ''));
         const payload = await response.json();
         if (!response.ok) throw Error(payload.error);
@@ -225,9 +227,10 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
         stats.potential += pageStats.potential || 0;
         stats.recentWinners += pageStats.recentWinners || 0;
         offset = payload.nextOffset || '';
-        if (!offset) break;
+        const oldestModified = Date.parse(payload.oldestModified || '');
+        if (!offset || (Number.isFinite(oldestModified) && oldestModified < lookbackStart)) break;
       }
-      const incoming = [...new Map(allRecords.map(t => [t.externalId, t])).values()].slice(0, 24);
+      const incoming = [...new Map(allRecords.map(t => [t.externalId, t])).values()].slice(0, 150);
 
       const existing = new Map(state.tenders
         .filter(t => t.source === 'Prozorro' && t.externalId)
