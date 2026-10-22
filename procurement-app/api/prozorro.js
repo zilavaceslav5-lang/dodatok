@@ -12,6 +12,10 @@ const STAGE_ONE_WORK_TERMS = [
   'дорог', 'благоустр', 'лагун', 'озер', 'ставк', 'водойм'
 ];
 const BUILDING_TERMS = ['будівл', 'будинок', 'приміщенн', 'корпус', 'споруд'];
+const NON_EXECUTION_TERMS = [
+  'проєктн', 'проектн', 'кошторисн', 'експертиз',
+  'технічн нагляд', 'авторськ нагляд', 'обстеженн', 'ліфт'
+];
 const WINNER_RECOGNITION_WINDOW_DAYS = 30;
 const WINNER_RECOGNITION_WINDOW_MS = WINNER_RECOGNITION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
@@ -92,17 +96,14 @@ function detectMaterial(text) {
   )?.material || '';
 }
 
-function stageOneAssessment(data, directMaterial) {
-  // A directly named material is immediately worth keeping; it still needs
-  // technical characteristics to establish a product match.
-  if (directMaterial) {
-    return {
-      selectionType: 'confirmed',
-      reason: 'Матеріал виявлено в позиції або специфікації відкритих даних Prozorro.'
-    };
-  }
-
+function stageOneAssessment(data) {
   const text = tenderText(data);
+  const codes = dkCodes(data).map((code) => code.replace(/\D/g, ''));
+  // A word such as “поліетилен” can describe a rubbish bag or medical item.
+  // It is never sufficient on its own: stage one is limited to construction
+  // works (CPV 45), then stage two confirms materials from tender documents.
+  if (!codes.some((code) => code.startsWith('45'))) return null;
+  if (NON_EXECUTION_TERMS.some((term) => text.includes(term))) return null;
   const isCurrentBuildingRepair = text.includes('поточн ремонт') && BUILDING_TERMS.some((term) => text.includes(term));
   const workTerm = STAGE_ONE_WORK_TERMS.find((term) => text.includes(term));
   if (workTerm || isCurrentBuildingRepair) {
@@ -189,22 +190,25 @@ async function tenderById(id, stats) {
     }
     stats.inCoverage += 1;
     const recognition = winnerRecognition(data);
-    // Keep active tenders as before. When a winner has been determined, show
-    // the opportunity only during the agreed thirty-day sales window.
-    if (recognition.hasWinner && !recognition.isRecent) {
+    const finishedStatuses = new Set(['complete', 'unsuccessful', 'cancelled']);
+    // Active procedures may be worked on now. A finished procedure is shown
+    // only when an active award was made during the agreed 30-day window.
+    if (finishedStatuses.has(data.status) && !recognition.isRecent) {
       stats.excludedOldWinner += 1;
       return null;
     }
     const requirements = materialRequirements(data);
     const primaryRequirement = requirements[0] || null;
-    const assessment = stageOneAssessment(data, primaryRequirement?.material || '');
+    const assessment = stageOneAssessment(data);
     if (!assessment) {
       stats.excludedNoEvidence += 1;
       return null;
     }
     if (recognition.isRecent) stats.recentWinners += 1;
     const selectionType = assessment.selectionType;
-    stats[selectionType === 'confirmed' ? 'materialEvidence' : 'potential'] += 1;
+    // Public item descriptions are a signal for document analysis, not proof
+    // of a Euroizol match. Confirmation is produced only by stage two.
+    stats.potential += 1;
     const documents = technicalDocuments(data);
     const observedMaterial = detectMaterial(tenderText(data));
 
