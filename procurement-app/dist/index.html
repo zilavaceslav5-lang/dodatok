@@ -204,10 +204,18 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
   // A refresh must never silently remove the manager's working list. Existing
   // Prozorro records stay until the manager explicitly removes them.
   $('syncProzorro').onclick = async () => {
-    toast('Перевіряю нові та недавні закупівлі Prozorro…');
+    const syncButton = $('syncProzorro');
+    const originalLabel = syncButton.textContent;
+    syncButton.disabled = true;
+    syncButton.textContent = 'Пошук Prozorro…';
+    toast('Пошук розпочато. Результати з’являтимуться поступово.');
     try {
       const allRecords = [];
+      const incomingByExternalId = new Map();
       const stats = { pages: 0, scanned: 0, inCoverage: 0, materialEvidence: 0, potential: 0, recentWinners: 0 };
+      const existing = new Map(state.tenders
+        .filter(t => t.source === 'Prozorro' && t.externalId)
+        .map(t => [t.externalId, t]));
       let offset = '';
       // Prozorro's feed is ordered by the latest modification, not by tender
       // publication date. Continue through the feed until its 30-day boundary
@@ -219,6 +227,12 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
         if (!response.ok) throw Error(payload.error);
         const pageRecords = Array.isArray(payload) ? payload : (payload.records || []);
         allRecords.push(...pageRecords);
+        pageRecords.forEach(t => {
+          const previous = existing.get(t.externalId);
+          t.id = previous?.id || crypto.randomUUID();
+          t.syncedAt = new Date().toISOString();
+          incomingByExternalId.set(t.externalId, t);
+        });
         const pageStats = payload.stats || {};
         stats.pages += pageStats.pages || 1;
         stats.scanned += pageStats.scanned || 0;
@@ -227,19 +241,20 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
         stats.potential += pageStats.potential || 0;
         stats.recentWinners += pageStats.recentWinners || 0;
         offset = payload.nextOffset || '';
+
+        // Do not leave an empty registry while the remaining pages are being
+        // scanned. This is especially important after a manager clears the
+        // local history: the first matching records are usable immediately.
+        const loadedIds = new Set(incomingByExternalId.keys());
+        const retainedDuringScan = state.tenders.filter(t => !loadedIds.has(t.externalId));
+        state.tenders = [...incomingByExternalId.values(), ...retainedDuringScan];
+        render();
+        toast(`Prozorro: перевірено сторінок ${stats.pages}; відібрано ${incomingByExternalId.size}. Пошук триває…`);
+
         const oldestModified = Date.parse(payload.oldestModified || '');
         if (!offset || (Number.isFinite(oldestModified) && oldestModified < lookbackStart)) break;
       }
-      const incoming = [...new Map(allRecords.map(t => [t.externalId, t])).values()].slice(0, 150);
-
-      const existing = new Map(state.tenders
-        .filter(t => t.source === 'Prozorro' && t.externalId)
-        .map(t => [t.externalId, t]));
-      incoming.forEach(t => {
-        const previous = existing.get(t.externalId);
-        t.id = previous?.id || crypto.randomUUID();
-        t.syncedAt = new Date().toISOString();
-      });
+      const incoming = [...incomingByExternalId.values()].slice(0, 150);
       const refreshedIds = new Set(incoming.map(t => t.externalId));
       const retained = state.tenders.filter(t => !refreshedIds.has(t.externalId));
       state.tenders = [...incoming, ...retained];
@@ -255,6 +270,9 @@ const KEY='euroizol-procurement-v1';let state=JSON.parse(localStorage.getItem(KE
       toast(`Prozorro: додано або оновлено ${incoming.length}. Попередні записи залишено — видаляйте їх вручну.${report}`);
     } catch (error) {
       toast('Не вдалося оновити Prozorro: ' + error.message);
+    } finally {
+      syncButton.disabled = false;
+      syncButton.textContent = originalLabel;
     }
   };
 

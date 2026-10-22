@@ -65,12 +65,15 @@ function targetAreaFor(address) {
 }
 
 function targetCoverageAreas(data) {
-  // The supplied benchmark selects by the buyer's service region. Prefer the
-  // buyer address; delivery locations are a fallback when it is unavailable.
-  const addresses = buyerAddress(data).length ? buyerAddress(data) : deliveryAddresses(data);
-  const areas = addresses.map(targetAreaFor);
-  if (!addresses.length || areas.some((area) => !area)) return [];
-  return [...new Set(areas)];
+  // The place where works are performed matters more than the office address
+  // of the customer. For example, a Kyiv-based company can order work in
+  // Poltava. Use a declared delivery/work location first and only fall back
+  // to the buyer address when Prozorro does not provide one.
+  const deliveryAreas = deliveryAddresses(data).map(targetAreaFor).filter(Boolean);
+  if (deliveryAreas.length) return [...new Set(deliveryAreas)];
+
+  const buyerAreas = buyerAddress(data).map(targetAreaFor).filter(Boolean);
+  return [...new Set(buyerAreas)];
 }
 
 function tenderText(data) {
