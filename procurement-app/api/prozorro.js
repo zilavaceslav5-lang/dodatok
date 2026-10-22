@@ -13,7 +13,6 @@ const STAGE_ONE_WORK_TERMS = [
 ];
 const BUILDING_TERMS = ['будівл', 'будинок', 'приміщенн', 'корпус', 'споруд'];
 const NON_EXECUTION_TERMS = [
-  'проєктн', 'проектн', 'кошторисн', 'експертиз',
   'технічн нагляд', 'авторськ нагляд', 'обстеженн', 'ліфт'
 ];
 const WINNER_RECOGNITION_WINDOW_DAYS = 30;
@@ -101,8 +100,9 @@ function stageOneAssessment(data) {
   const codes = dkCodes(data).map((code) => code.replace(/\D/g, ''));
   // A word such as “поліетилен” can describe a rubbish bag or medical item.
   // It is never sufficient on its own: stage one is limited to construction
-  // works (CPV 45), then stage two confirms materials from tender documents.
-  if (!codes.some((code) => code.startsWith('45'))) return null;
+  // works (CPV 45) or design work for such objects (CPV 712), then stage two
+  // confirms materials from tender documents.
+  if (!codes.some((code) => code.startsWith('45') || code.startsWith('712'))) return null;
   if (NON_EXECUTION_TERMS.some((term) => text.includes(term))) return null;
   const isCurrentBuildingRepair = text.includes('поточн ремонт') && BUILDING_TERMS.some((term) => text.includes(term));
   const workTerm = STAGE_ONE_WORK_TERMS.find((term) => text.includes(term));
